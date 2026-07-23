@@ -285,10 +285,28 @@ async function getActiveConversations() {
 const PUBLIC_LIMITS = { perIpPerHour: 3, perDay: 20 };
 const publicCreateLog = []; // { ts, ip }
 
+// IP privacy: we never store raw client addresses. Each IP is reduced to a
+// truncated HMAC-SHA256 with a random persistent salt (generated once, kept
+// next to the state file) — enough to rate-limit repeat traffic, useless for
+// identifying anyone.
+const IP_SALT_FILE = process.env.IP_SALT_FILE || path.join(path.dirname(STATE_FILE), 'ip-salt');
+let ipSalt;
+try {
+  ipSalt = fs.readFileSync(IP_SALT_FILE, 'utf-8').trim();
+  if (!ipSalt) throw new Error('empty');
+} catch {
+  ipSalt = crypto.randomBytes(32).toString('hex');
+  fs.writeFileSync(IP_SALT_FILE, ipSalt, { mode: 0o600 });
+}
+
+function hashIp(ip) {
+  return crypto.createHmac('sha256', ipSalt).update(String(ip)).digest('hex').slice(0, 16);
+}
+
 function clientIp(req) {
   // We only listen on loopback; nginx sets X-Forwarded-For to the real client.
   const xff = req.headers['x-forwarded-for'];
-  return xff ? xff.split(',')[0].trim() : req.socket.remoteAddress;
+  return hashIp(xff ? xff.split(',')[0].trim() : req.socket.remoteAddress);
 }
 
 function publicCreateBlocked(ip) {
