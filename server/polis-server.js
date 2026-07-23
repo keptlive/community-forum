@@ -982,12 +982,14 @@ const server = http.createServer(async (req, res) => {
 
     // --- Public web hub routes (the ONLY ones nginx exposes to the internet) ---
 
-    // GET /t/:slug — human-readable topic URL, redirects to the voting page
+    // GET /t/:slug — human-readable topic URL. Served via nginx internal
+    // redirect (X-Accel-Redirect) so the browser keeps the slug in the
+    // address bar while the participation client renders the page.
     const slugMatch = req.url?.match(/^\/t\/([a-z0-9-]+)$/);
     if (req.method === 'GET' && slugMatch) {
       const zinvite = topicSlugs[slugMatch[1]];
       if (zinvite) {
-        res.writeHead(301, { Location: `${PUBLIC_URL}/alpha/${zinvite}` });
+        res.writeHead(200, { 'X-Accel-Redirect': `/_conv/${zinvite}` });
         return res.end();
       }
       res.writeHead(302, { Location: `${PUBLIC_URL}/` });

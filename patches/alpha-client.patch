@@ -56,8 +56,26 @@ index 0513566c7..97853783a 100644
  }
  
  export default function EmailSubscribeForm({ s, conversation_id }: EmailSubscribeFormProps) {
+diff --git a/client-participation-alpha/src/lib/auth.ts b/client-participation-alpha/src/lib/auth.ts
+index 90257a6d7..40fc586c0 100644
+--- a/client-participation-alpha/src/lib/auth.ts
++++ b/client-participation-alpha/src/lib/auth.ts
+@@ -10,6 +10,13 @@ export function getConversationIdFromUrl(): string | null {
+     return null
+   }
+ 
++  // Preferred: the SSR page injects the ID (needed when serving under a
++  // readable /t/<slug> URL, where the path doesn't contain the ID)
++  const injected = (window as { __CONVERSATION_ID?: string }).__CONVERSATION_ID
++  if (injected) {
++    return injected
++  }
++
+   const pathname = window.location.pathname
+   // Match patterns like /alpha/2demo or just /2demo
+   // Conversation IDs start with a digit followed by alphanumeric chars
 diff --git a/client-participation-alpha/src/pages/[conversation_id].astro b/client-participation-alpha/src/pages/[conversation_id].astro
-index dd7dc8866..84621885f 100644
+index dd7dc8866..c4c70da3d 100644
 --- a/client-participation-alpha/src/pages/[conversation_id].astro
 +++ b/client-participation-alpha/src/pages/[conversation_id].astro
 @@ -2,7 +2,7 @@
@@ -78,7 +96,19 @@ index dd7dc8866..84621885f 100644
  import Layout from '../pages/layouts/Layout.astro'
  import { getTranslations } from '../strings/strings'
  import type { Translations } from '../strings/types'
-@@ -200,12 +200,11 @@ const hideHeader = Astro.url.searchParams.get('hide_header');
+@@ -117,6 +117,11 @@ const hideHeader = Astro.url.searchParams.get('hide_header');
+   lang={pageLang || 'en'}
+   dir={s.direction}
+ >
++  {/* Expose the conversation ID for clients served under a readable /t/<slug>
++      URL, where it can't be derived from the address bar */}
++  <script define:vars={{ conversation_id }} is:inline>
++    window.__CONVERSATION_ID = conversation_id;
++  </script>
+   {/* Handle JWT token from initial data on client side - MUST be synchronous to avoid race conditions */}
+   <script define:vars={{ initialData }} is:inline>
+     if (initialData && initialData.auth && initialData.auth.token) {
+@@ -200,12 +205,11 @@ const hideHeader = Astro.url.searchParams.get('hide_header');
      )}
  
      <div style="margin-top: 3rem; text-align: center;">
