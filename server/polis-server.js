@@ -385,7 +385,7 @@ function unsubscribeLink(accountId, zinvite) {
 
 // Fan a message out to a topic's group (its followers).
 // skipPhones: phones already notified via the legacy per-phone subscription.
-async function notifyGroup(zinvite, topic, message, skipPhones) {
+async function notifyGroup(zinvite, topic, message, skipPhones, subject) {
   const skip = new Set(skipPhones || []);
   for (const [accountId, acct] of accountsFollowing(zinvite)) {
     if (acct.channel === 'whatsapp') {
@@ -403,7 +403,7 @@ async function notifyGroup(zinvite, topic, message, skipPhones) {
     } else if (acct.channel === 'email') {
       await sendEmail(
         acct.contact,
-        `${topic} — Croton Community Forum`,
+        subject || `${topic} — Croton Community Forum`,
         `${message.replace(/\*/g, '')}\n\nVote here: ${topicUrl(zinvite, topic)}\n\n—\nCroton Community Forum · ${PUBLIC_URL}\nUnsubscribe from this topic: ${unsubscribeLink(accountId, zinvite)}\nUnsubscribe from everything: ${unsubscribeLink(accountId, null)}`,
         unsubscribeLink(accountId, zinvite)
       );
@@ -760,7 +760,8 @@ async function checkForNewStatements() {
           conv.zinvite,
           conv.topic,
           `🔔 *${newCount} new statement${newCount > 1 ? 's' : ''}* to vote on in "${conv.topic}"`,
-          notifiedPhones
+          notifiedPhones,
+          `${newCount} new statement${newCount > 1 ? 's' : ''} to vote on: ${conv.topic}`
         );
       }
 
