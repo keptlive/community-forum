@@ -69,10 +69,21 @@ server {
     # Public topic hub API — the ONLY part of the local proxy (127.0.0.1:9876)
     # exposed to the internet: list topics, create a topic, close your own.
     # The /wa/* and admin routes on that port stay loopback-only.
-    # Human-readable topic URLs (redirects served by the hub)
+    # Human-readable topic URLs: the hub resolves the slug and answers with
+    # X-Accel-Redirect to /_conv/<id>, so the browser keeps the slug URL.
     location /t/ {
         proxy_pass http://127.0.0.1:9876;
         proxy_set_header Host $host;
+    }
+
+    location /_conv/ {
+        internal;
+        rewrite ^/_conv/(.*)$ /$1 break;
+        proxy_pass http://127.0.0.1:4321;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 300;
+        proxy_buffering off;
     }
 
     location /public/ {
