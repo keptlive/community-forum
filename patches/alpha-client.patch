@@ -86,3 +86,31 @@ index dd7dc8866..84621885f 100644
      </div>
    </div>
  </Layout>
+diff --git a/client-participation-alpha/src/pages/layouts/Layout.astro b/client-participation-alpha/src/pages/layouts/Layout.astro
+index aa2560f61..243a56244 100644
+--- a/client-participation-alpha/src/pages/layouts/Layout.astro
++++ b/client-participation-alpha/src/pages/layouts/Layout.astro
+@@ -7,18 +7,19 @@ interface Props {
+   dir?: 'ltr' | 'rtl';
+ }
+ 
+-const { title = 'Polis Conversation', lang = 'en', dir = 'ltr' } = Astro.props;
++const { title = 'Croton Community Forum', lang = 'en', dir = 'ltr' } = Astro.props;
+ ---
+ <!DOCTYPE html>
+ <html lang={lang} dir={dir}>
+ <head>
+     <meta charset="UTF-8" />
+     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+-    <!-- Relative URL so it works when app is mounted at /alpha/ behind nginx -->
+     <link rel="icon" type="image/x-icon" href="favicon.ico" />
++    <!-- Fonts are self-hosted (served by the host nginx) — no third-party requests -->
++    <link href="/fonts/fonts.css" rel="stylesheet" />
+     <title>{title}</title>
+ </head>
+ <body>
+     <slot />
+ </body>
+-</html>
+\ No newline at end of file
++</html>

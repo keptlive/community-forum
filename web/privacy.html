@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Privacy — Croton Community Forum</title>
+  <link rel="icon" href="/favicon.ico" type="image/x-icon">
+  <link href="/fonts/fonts.css" rel="stylesheet">
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --green: #3b6b4a; --green-dark: #2d5439; --green-soft: rgba(76,132,96,0.12);
+      --ink: #1a1a2e; --muted: #666; --faint: #999;
+      --card: rgba(255,255,255,0.78);
+    }
+    body {
+      font-family: "Inter", system-ui, sans-serif;
+      color: var(--ink);
+      min-height: 100vh;
+      background: linear-gradient(135deg, #f8f6f0 0%, #e8e4da 50%, #d4e4d9 100%);
+      background-attachment: fixed;
+    }
+    .wrap { max-width: 680px; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; }
+    .back { font-size: 0.85rem; color: var(--green); text-decoration: none; font-weight: 600; }
+    .back:hover { text-decoration: underline; text-underline-offset: 3px; }
+    h1 {
+      font-family: "DM Serif Display", serif;
+      font-weight: 400;
+      font-size: clamp(2rem, 5vw, 2.8rem);
+      margin: 1rem 0 0.4rem;
+    }
+    h1 em { font-style: italic; color: var(--green); }
+    .updated { font-size: 0.8rem; color: var(--faint); margin-bottom: 2rem; }
+    .card {
+      background: var(--card);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255,255,255,0.88);
+      border-radius: 16px;
+      padding: 1.4rem 1.5rem;
+      margin-bottom: 1rem;
+      box-shadow: 0 1px 5px rgba(26,26,46,0.05);
+    }
+    .card h2 {
+      font-family: "DM Serif Display", serif;
+      font-weight: 400;
+      font-size: 1.25rem;
+      margin-bottom: 0.6rem;
+    }
+    .card p, .card li { font-size: 0.92rem; line-height: 1.65; color: #444; }
+    .card p + p { margin-top: 0.7rem; }
+    .card ul { padding-left: 1.2rem; margin-top: 0.5rem; }
+    .card li { margin-bottom: 0.4rem; }
+    .card strong { color: var(--ink); }
+    .promise {
+      border-left: 3px solid var(--green);
+      background: var(--green-soft);
+      border-radius: 0 10px 10px 0;
+      padding: 0.8rem 1rem;
+      font-size: 0.9rem;
+      line-height: 1.6;
+      margin-top: 0.8rem;
+      color: var(--green-dark);
+    }
+    .footer {
+      margin-top: 2.5rem; padding-top: 1.4rem;
+      border-top: 1px solid rgba(0,0,0,0.06);
+      font-size: 0.78rem; color: var(--faint);
+    }
+    .footer a { color: #777; text-decoration: none; }
+    .footer a:hover { color: var(--green); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <a class="back" href="/">&larr; Back to the forum</a>
+    <h1>Privacy <em>Policy</em></h1>
+    <div class="updated">Last updated July 23, 2026</div>
+
+    <div class="card">
+      <h2>The short version</h2>
+      <p>This forum is built to need as little of your information as
+      possible. Voting is anonymous, there are no trackers, no ads, no
+      analytics, and this site makes <strong>zero requests to third-party
+      services</strong> from your browser — fonts and all assets are served
+      from this site itself.</p>
+    </div>
+
+    <div class="card">
+      <h2>Voting and statements</h2>
+      <p>You can read, vote, write statements, and create topics without any
+      account. Your browser generates a <strong>random anonymous ID</strong>,
+      stored only on your device, so the system can show you statements you
+      haven't voted on yet. It is not tied to your name, email, or anything
+      else about you.</p>
+      <p>Votes are recorded against that anonymous ID. Statements and topics
+      you write are <strong>public</strong> — don't include personal
+      information in them.</p>
+    </div>
+
+    <div class="card">
+      <h2>IP addresses</h2>
+      <p>To prevent spam, topic creation is rate-limited. For this we reduce
+      your IP address to a <strong>salted, truncated cryptographic hash</strong>
+      the moment a request arrives — the raw address is never written to
+      disk, and the hash cannot be reversed into an address.</p>
+      <div class="promise">We keep no web access logs on this site, and the
+      voting engine behind it never receives your IP address at all.</div>
+    </div>
+
+    <div class="card">
+      <h2>If you sign up for updates</h2>
+      <p>Notifications are optional. If you subscribe, we store what you give
+      us — a display name (optional) and an email address <em>or</em> WhatsApp
+      number — and use it for exactly one thing: sending you the updates you
+      asked for.</p>
+      <ul>
+        <li><strong>Email</strong> is delivered through Mailgun, our mail
+        provider, which processes your address solely to deliver the
+        message. Every email includes one-click unsubscribe.</li>
+        <li><strong>WhatsApp</strong> messages are delivered through WhatsApp;
+        their own terms apply to your use of WhatsApp itself. Reply
+        <em>unsubscribe</em> anytime to stop.</li>
+      </ul>
+      <p>Unsubscribing stops all updates immediately. To have your contact
+      details deleted entirely, use the unsubscribe link and your record
+      becomes inert; you can also ask the moderators to purge it.</p>
+    </div>
+
+    <div class="card">
+      <h2>Cookies and local storage</h2>
+      <p>We set <strong>no tracking cookies</strong>. Your browser's local
+      storage holds your anonymous voting ID, your notification signup (if
+      any), and keys for topics you created — all on your device, readable
+      only by this site, and gone if you clear your browser data.</p>
+    </div>
+
+    <div class="card">
+      <h2>What we never do</h2>
+      <ul>
+        <li>No analytics, trackers, ad networks, or social-media pixels</li>
+        <li>No third-party fonts, scripts, or CDNs — nothing loads from
+        anyone else's servers</li>
+        <li>No selling, sharing, or repurposing of contact details</li>
+        <li>No linking of votes to identities — we couldn't if we wanted to</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>Questions</h2>
+      <p>This forum is run by local volunteers. Questions or deletion
+      requests: ask in the community WhatsApp group, or open a topic about
+      it right here.</p>
+    </div>
+
+    <div class="footer">
+      <a href="/">Home</a> &middot; <a href="/tos">Terms of Service</a>
+    </div>
+  </div>
+</body>
+</html>

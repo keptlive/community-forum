@@ -2,6 +2,7 @@
 
 server {
     listen 80;
+    access_log off;
     server_name forum.example.org;
 
     location /.well-known/acme-challenge/ {
@@ -17,9 +18,25 @@ server {
     listen 443 ssl http2;
     server_name forum.example.org;
     client_max_body_size 50M;
+    access_log off;
 
     ssl_certificate /etc/letsencrypt/live/forum.example.org/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/forum.example.org/privkey.pem;
+
+    location /fonts/ {
+        root /var/www/polis;
+        expires 30d;
+    }
+
+    location = /privacy {
+        root /var/www/polis;
+        try_files /privacy.html =404;
+    }
+
+    location = /tos {
+        root /var/www/polis;
+        try_files /tos.html =404;
+    }
 
     # Custom landing page at exact root
     location = / {
@@ -52,6 +69,12 @@ server {
     # Public topic hub API — the ONLY part of the local proxy (127.0.0.1:9876)
     # exposed to the internet: list topics, create a topic, close your own.
     # The /wa/* and admin routes on that port stay loopback-only.
+    # Human-readable topic URLs (redirects served by the hub)
+    location /t/ {
+        proxy_pass http://127.0.0.1:9876;
+        proxy_set_header Host $host;
+    }
+
     location /public/ {
         limit_req zone=polis_public burst=15 nodelay;
         proxy_pass http://127.0.0.1:9876;
@@ -63,8 +86,6 @@ server {
     location / {
         proxy_pass http://127.0.0.1:5000;
         proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_read_timeout 300;
         proxy_buffering off;
