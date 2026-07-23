@@ -1,0 +1,32 @@
+[Unit]
+Description=Community Forum hub (Polis proxy + voting + notifications)
+After=network.target docker.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/node /opt/community-forum/server/polis-server.js
+WorkingDirectory=/opt/community-forum/server
+Restart=on-failure
+RestartSec=5
+
+# --- Required ---
+Environment=POLIS_PUBLIC_URL=https://forum.example.org
+# Where the Polis server container's API is published (loopback recommended)
+Environment=POLIS_API_URL=http://127.0.0.1:5000
+
+# --- Branding ---
+Environment="BRAND_NAME=My Community Forum"
+
+# --- Email notifications (Mailgun; omit to disable email channel) ---
+Environment=MAILGUN_API_KEY=changeme
+Environment=MAILGUN_DOMAIN=mg.example.org
+Environment="EMAIL_FROM=My Community Forum <forum@mg.example.org>"
+
+# --- Optional overrides (defaults shown) ---
+# Environment=PORT=9876
+# Environment=POLIS_JWT_KEY=/opt/community-forum/server/jwt-private.pem
+# Environment=STATE_FILE=/opt/community-forum/server/voting-state.json
+# Environment=POLIS_ADMIN_UID=2
+
+[Install]
+WantedBy=multi-user.target

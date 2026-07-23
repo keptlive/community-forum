@@ -1,0 +1,88 @@
+diff --git a/client-participation-alpha/src/components/EmailSubscribeForm.tsx b/client-participation-alpha/src/components/EmailSubscribeForm.tsx
+index 0513566c7..728370d7b 100644
+--- a/client-participation-alpha/src/components/EmailSubscribeForm.tsx
++++ b/client-participation-alpha/src/components/EmailSubscribeForm.tsx
+@@ -1,5 +1,4 @@
+ import React, { useState } from 'react'
+-import { subscribeToNotifications } from '../api/notifications'
+ import type { Translations } from '../strings/types'
+ 
+ interface EmailSubscribeFormProps {
+@@ -7,12 +6,37 @@ interface EmailSubscribeFormProps {
+   conversation_id: string
+ }
+ 
++// Croton: subscriptions go through the community hub's notification system
++// (Mailgun-backed) instead of Polis's SES sender, which is not configured on
++// this deployment.
+ const subscribeAPI = async (email: string, conversation_id: string) => {
+-  return await subscribeToNotifications({
+-    email,
+-    conversation_id,
+-    frequency: 1
++  const acctRes = await fetch('/public/account', {
++    method: 'POST',
++    headers: { 'Content-Type': 'application/json' },
++    body: JSON.stringify({ channel: 'email', contact: email })
+   })
++  const acct = await acctRes.json()
++  if (!acctRes.ok || !acct.accountId) throw new Error(acct.error || 'account failed')
++
++  const subRes = await fetch('/public/subscribe', {
++    method: 'POST',
++    headers: { 'Content-Type': 'application/json' },
++    body: JSON.stringify({ accountId: acct.accountId, zinvite: conversation_id })
++  })
++  const sub = await subRes.json()
++  if (!subRes.ok) throw new Error(sub.error || 'subscribe failed')
++
++  try {
++    localStorage.setItem('ccf-account', JSON.stringify({
++      accountId: acct.accountId,
++      name: acct.name || '',
++      channel: 'email',
++      contact: email
++    }))
++  } catch {
++    // localStorage unavailable (private mode) — subscription still succeeded
++  }
++  return sub
+ }
+ 
+ export default function EmailSubscribeForm({ s, conversation_id }: EmailSubscribeFormProps) {
+diff --git a/client-participation-alpha/src/pages/[conversation_id].astro b/client-participation-alpha/src/pages/[conversation_id].astro
+index dd7dc8866..84621885f 100644
+--- a/client-participation-alpha/src/pages/[conversation_id].astro
++++ b/client-participation-alpha/src/pages/[conversation_id].astro
+@@ -2,7 +2,7 @@
+ import { marked } from 'marked'
+ import { fetchParticipationInit } from '../api/participation'
+ import type { ParticipationInitData } from '../api/types'
+-import DonateMessage from '../components/DonateMessage'
++
+ import Header from '../components/Header.astro'
+ import Survey from '../components/Survey'
+ import SurveyForm from '../components/SurveyForm'
+@@ -11,7 +11,7 @@ import TreeviteInvites from '../components/TreeviteInvites'
+ import TreeviteLoginCodeModal from '../components/TreeviteLoginCodeModal'
+ import VisualizationContainer from '../components/VisualizationContainer'
+ import XidOidcConflictWarning from '../components/XidOidcConflictWarning'
+-import PolisLogo from '../components/icons/PolisLogo'
++
+ import Layout from '../pages/layouts/Layout.astro'
+ import { getTranslations } from '../strings/strings'
+ import type { Translations } from '../strings/types'
+@@ -200,12 +200,11 @@ const hideHeader = Astro.url.searchParams.get('hide_header');
+     )}
+ 
+     <div style="margin-top: 3rem; text-align: center;">
+-      <PolisLogo size={120} />
++      
+       <div class="footer-links">
+         <a href="/privacy" target="_blank" rel="noopener noreferrer">{s.privacy}</a>
+         <a href="/tos" target="_blank" rel="noopener noreferrer">{s.TOS}</a>
+       </div>
+-      <DonateMessage client:load />
+     </div>
+   </div>
+ </Layout>

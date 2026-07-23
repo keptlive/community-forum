@@ -1,0 +1,72 @@
+# Community Forum nginx vhost (example)
+
+server {
+    listen 80;
+    server_name forum.example.org;
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/letsencrypt;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl http2;
+    server_name forum.example.org;
+    client_max_body_size 50M;
+
+    ssl_certificate /etc/letsencrypt/live/forum.example.org/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/forum.example.org/privkey.pem;
+
+    # Custom landing page at exact root
+    location = / {
+        root /var/www/polis;
+        try_files /landing.html =404;
+    }
+
+    # Conversation IDs (start with a digit) go to the alpha participation client
+    location ~ ^/([0-9][0-9A-Za-z]+)$ {
+        return 301 /alpha/$1;
+    }
+
+    location /_astro/ {
+        proxy_pass http://127.0.0.1:4321;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 300;
+        proxy_buffering off;
+    }
+
+    location /alpha/ {
+        rewrite ^/alpha/(.*)$ /$1 break;
+        proxy_pass http://127.0.0.1:4321;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 300;
+        proxy_buffering off;
+    }
+
+    # Public topic hub API — the ONLY part of the local proxy (127.0.0.1:9876)
+    # exposed to the internet: list topics, create a topic, close your own.
+    # The /wa/* and admin routes on that port stay loopback-only.
+    location /public/ {
+        limit_req zone=polis_public burst=15 nodelay;
+        proxy_pass http://127.0.0.1:9876;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header Host $host;
+    }
+
+    # Everything else (API, admin, report) to the polis server
+    location / {
+        proxy_pass http://127.0.0.1:5000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 300;
+        proxy_buffering off;
+    }
+}

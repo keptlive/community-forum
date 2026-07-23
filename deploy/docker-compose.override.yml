@@ -1,0 +1,26 @@
+services:
+  # Public serving moved to host nginx (/etc/nginx/sites-enabled/polis.croton.news)
+  # after host nginx took over ports 80/443 in June 2026; the container proxy can
+  # no longer bind them. Keep it out of `up` runs.
+  nginx-proxy:
+    profiles: ["disabled"]
+    volumes:
+      - /etc/letsencrypt/live/polis.croton.news/fullchain.pem:/etc/nginx/certs/snakeoil.cert.pem:ro
+      - /etc/letsencrypt/live/polis.croton.news/privkey.pem:/etc/nginx/certs/snakeoil.key.pem:ro
+      - ./landing.html:/etc/nginx/landing/landing.html:ro
+      - ./nginx-landing.conf.template:/etc/nginx/conf.d/default.conf.template:ro
+
+  # Expose the API on loopback for host nginx and polis-server.js (port 9876).
+  server:
+    ports:
+      - "127.0.0.1:5000:5000"
+
+  # Loopback only — host nginx fronts it; was 0.0.0.0:4321.
+  client-participation-alpha:
+    ports: !override
+      - "127.0.0.1:4321:4321"
+
+  # Delphi (AI narrative reports) is unused here and crash-loops without
+  # MinIO/DynamoDB (27k+ restarts as of 2026-07-22). Keep it disabled.
+  delphi:
+    profiles: ["disabled"]
