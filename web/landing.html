@@ -1,0 +1,837 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Croton Community Forum</title>
+  <link rel="icon" href="/favicon.ico" type="image/x-icon">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --green: #3b6b4a;
+      --green-dark: #2d5439;
+      --green-soft: rgba(76, 132, 96, 0.12);
+      --ink: #1a1a2e;
+      --muted: #666;
+      --faint: #999;
+      --line: #d6d3ca;
+      --card: rgba(255, 255, 255, 0.78);
+      --danger: #a05050;
+    }
+
+    body {
+      font-family: "Inter", system-ui, sans-serif;
+      color: var(--ink);
+      min-height: 100vh;
+      background: linear-gradient(135deg, #f8f6f0 0%, #e8e4da 50%, #d4e4d9 100%);
+      background-attachment: fixed;
+    }
+
+    .wrap { max-width: 780px; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; }
+
+    /* --- Header --- */
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      flex-wrap: wrap;
+      margin-bottom: 2.25rem;
+    }
+    .brand { display: flex; flex-direction: column; gap: 0.15rem; }
+    .brand h1 {
+      font-family: "DM Serif Display", serif;
+      font-weight: 400;
+      font-size: clamp(1.7rem, 4.5vw, 2.3rem);
+      line-height: 1.1;
+    }
+    .brand h1 em { font-style: italic; color: var(--green); }
+    .brand .tag { font-size: 0.82rem; color: var(--muted); }
+
+    .me {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      background: var(--card);
+      border: 1px solid rgba(255,255,255,0.9);
+      border-radius: 100px;
+      padding: 0.4rem 0.55rem 0.4rem 1rem;
+      font-size: 0.83rem;
+      box-shadow: 0 1px 4px rgba(26,26,46,0.06);
+      cursor: pointer;
+    }
+    .me:hover { border-color: var(--green); }
+    .me .dot {
+      width: 26px; height: 26px;
+      border-radius: 50%;
+      background: var(--green);
+      color: #fff;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 0.75rem;
+      flex-shrink: 0;
+    }
+
+    h2 {
+      font-family: "DM Serif Display", serif;
+      font-weight: 400;
+      font-size: 1.5rem;
+      margin: 2.4rem 0 0.9rem;
+    }
+    h2 small { font-family: "Inter", sans-serif; font-size: 0.78rem; color: var(--faint); font-weight: 400; margin-left: 0.5rem; }
+
+    /* --- Cards --- */
+    .card {
+      background: var(--card);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.88);
+      border-radius: 16px;
+      padding: 1.3rem 1.45rem;
+      margin-bottom: 1rem;
+      box-shadow: 0 1px 5px rgba(26, 26, 46, 0.05);
+      transition: box-shadow 0.2s ease;
+    }
+
+    .topic-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.9rem; }
+    .topic-title { font-weight: 600; font-size: 1.06rem; line-height: 1.45; }
+    .topic-desc { font-size: 0.89rem; color: var(--muted); line-height: 1.55; margin-top: 0.45rem; }
+    .topic-stats { margin-top: 0.7rem; display: flex; gap: 1.1rem; font-size: 0.76rem; color: var(--faint); flex-wrap: wrap; }
+    .topic-stats b { color: var(--muted); font-weight: 600; }
+    .topic-actions { margin-top: 0.95rem; display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; }
+
+    .pill {
+      display: inline-block;
+      font-size: 0.68rem;
+      font-weight: 600;
+      color: var(--green);
+      background: var(--green-soft);
+      border-radius: 100px;
+      padding: 0.18rem 0.6rem;
+      white-space: nowrap;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.45rem;
+      padding: 0.55rem 1.2rem;
+      border-radius: 10px;
+      font-size: 0.88rem;
+      font-weight: 600;
+      font-family: inherit;
+      text-decoration: none;
+      transition: all 0.16s ease;
+      cursor: pointer;
+      border: none;
+      background: none;
+    }
+    .btn-primary { background: var(--green); color: #fff; box-shadow: 0 2px 8px rgba(59, 107, 74, 0.28); }
+    .btn-primary:hover { background: var(--green-dark); transform: translateY(-1px); }
+    .btn:disabled { opacity: 0.5; cursor: default; transform: none; }
+    .btn-outline { border: 1.5px solid var(--line); color: var(--ink); background: rgba(255,255,255,0.7); }
+    .btn-outline:hover { border-color: var(--green); color: var(--green); }
+    .btn-outline.following { border-color: var(--green); background: var(--green-soft); color: var(--green); }
+    .btn-quiet { color: var(--danger); font-size: 0.78rem; font-weight: 500; padding: 0.35rem 0.3rem; text-decoration: underline; text-underline-offset: 3px; }
+    .btn-quiet:hover { color: #7c3535; }
+    .btn-link { color: var(--green); font-size: 0.83rem; font-weight: 600; padding: 0.35rem 0.3rem; }
+    .btn-link:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+    /* --- Inline voting panel --- */
+    .vote-panel {
+      margin-top: 1rem;
+      border-top: 1px dashed rgba(0,0,0,0.1);
+      padding-top: 1.1rem;
+      animation: slideIn 0.25s ease;
+    }
+    @keyframes slideIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+
+    .vp-progress { font-size: 0.73rem; color: var(--faint); font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 0.6rem; }
+    .vp-bar { height: 4px; background: rgba(0,0,0,0.07); border-radius: 4px; overflow: hidden; margin-bottom: 1rem; }
+    .vp-bar i { display: block; height: 100%; background: var(--green); border-radius: 4px; transition: width 0.3s ease; }
+
+    .vp-statement {
+      font-size: 1.05rem;
+      line-height: 1.6;
+      font-weight: 500;
+      padding: 0.2rem 0 1.1rem;
+      min-height: 3.2rem;
+    }
+
+    .vp-buttons { display: flex; gap: 0.6rem; flex-wrap: wrap; }
+    .vp-buttons .btn { flex: 1; min-width: 105px; padding: 0.7rem 0.5rem; }
+    .btn-agree { background: var(--green); color: #fff; }
+    .btn-agree:hover { background: var(--green-dark); }
+    .btn-disagree { background: #8a4f4f; color: #fff; }
+    .btn-disagree:hover { background: #703c3c; }
+    .btn-pass { border: 1.5px solid var(--line); background: rgba(255,255,255,0.75); color: var(--muted); }
+    .btn-pass:hover { border-color: #aaa; }
+
+    .vp-write { margin-top: 1rem; }
+    .vp-write textarea { min-height: 3.6rem; }
+    .vp-done { text-align: center; padding: 0.8rem 0 0.4rem; }
+    .vp-done .big { font-size: 1.5rem; margin-bottom: 0.4rem; }
+    .vp-done p { color: var(--muted); font-size: 0.9rem; line-height: 1.6; }
+
+    /* --- Forms --- */
+    form label, .fieldlabel {
+      display: block;
+      font-size: 0.8rem;
+      font-weight: 600;
+      margin: 0.95rem 0 0.35rem;
+      color: #333;
+    }
+    form label span, .fieldlabel span { font-weight: 400; color: var(--faint); }
+    input[type="text"], input[type="email"], input[type="tel"], textarea, select {
+      width: 100%;
+      font-family: inherit;
+      font-size: 0.94rem;
+      padding: 0.62rem 0.8rem;
+      border: 1.5px solid var(--line);
+      border-radius: 10px;
+      background: rgba(255,255,255,0.92);
+      color: var(--ink);
+      transition: border-color 0.15s ease;
+    }
+    input:focus, textarea:focus { outline: none; border-color: var(--green); }
+    textarea { resize: vertical; min-height: 4.4rem; }
+    .charcount { font-size: 0.7rem; color: #b5b2aa; text-align: right; margin-top: 0.2rem; }
+    .check { display: flex; align-items: flex-start; gap: 0.55rem; margin-top: 0.95rem; font-size: 0.85rem; color: var(--muted); line-height: 1.5; }
+    .check input { margin-top: 0.2rem; accent-color: var(--green); }
+
+    .segmented { display: flex; gap: 0.5rem; }
+    .segmented label {
+      flex: 1; margin: 0;
+      display: flex; align-items: center; justify-content: center; gap: 0.4rem;
+      border: 1.5px solid var(--line);
+      border-radius: 10px;
+      padding: 0.55rem;
+      font-size: 0.86rem; font-weight: 500;
+      cursor: pointer;
+      background: rgba(255,255,255,0.7);
+      transition: all 0.15s ease;
+    }
+    .segmented input { display: none; }
+    .segmented label:has(input:checked) {
+      border-color: var(--green);
+      background: var(--green-soft);
+      color: var(--green);
+      font-weight: 600;
+    }
+
+    .hp { position: absolute; left: -9999px; top: -9999px; }
+
+    .notice {
+      border-radius: 10px;
+      padding: 0.75rem 1rem;
+      font-size: 0.88rem;
+      line-height: 1.55;
+      margin-top: 0.95rem;
+      display: none;
+    }
+    .notice.error { display: block; background: rgba(160, 80, 80, 0.1); border: 1px solid rgba(160, 80, 80, 0.25); color: #7c3535; }
+    .notice.success { display: block; background: var(--green-soft); border: 1px solid rgba(76, 132, 96, 0.3); color: var(--green-dark); }
+    .notice a { color: inherit; font-weight: 600; }
+
+    /* --- Modal --- */
+    .overlay {
+      position: fixed; inset: 0;
+      background: rgba(26, 26, 46, 0.35);
+      backdrop-filter: blur(3px);
+      display: none;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 6vh 1rem;
+      z-index: 50;
+    }
+    .overlay.open { display: flex; }
+    .modal {
+      background: #fbfaf6;
+      border-radius: 18px;
+      max-width: 26rem;
+      width: 100%;
+      padding: 1.6rem 1.6rem 1.4rem;
+      box-shadow: 0 12px 48px rgba(26, 26, 46, 0.25);
+      animation: slideIn 0.22s ease;
+    }
+    .modal h3 { font-family: "DM Serif Display", serif; font-weight: 400; font-size: 1.35rem; margin-bottom: 0.35rem; }
+    .modal .sub { font-size: 0.85rem; color: var(--muted); line-height: 1.55; }
+    .modal-actions { display: flex; gap: 0.6rem; margin-top: 1.3rem; justify-content: flex-end; align-items: center; }
+
+    .muted { color: var(--faint); font-size: 0.88rem; line-height: 1.6; }
+
+    .footer {
+      margin-top: 3.5rem;
+      padding-top: 1.5rem;
+      border-top: 1px solid rgba(0,0,0,0.06);
+      font-size: 0.77rem;
+      color: var(--faint);
+      line-height: 1.8;
+    }
+    .footer a { color: #777; text-decoration: none; }
+    .footer a:hover { color: var(--green); }
+
+    .toast {
+      position: fixed;
+      bottom: 1.4rem; left: 50%;
+      transform: translateX(-50%) translateY(20px);
+      background: var(--ink);
+      color: #fff;
+      font-size: 0.85rem;
+      padding: 0.65rem 1.2rem;
+      border-radius: 100px;
+      opacity: 0;
+      pointer-events: none;
+      transition: all 0.25s ease;
+      z-index: 60;
+      max-width: 90vw;
+      text-align: center;
+    }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  </style>
+  <script>
+    // Detect OIDC callback from Auth0 and load admin app to process it
+    var params = new URLSearchParams(window.location.search);
+    if (params.has("code") && params.has("state")) {
+      window.location.replace("/home2" + window.location.search);
+    }
+    if (params.has("error")) {
+      window.location.replace("/home2" + window.location.search);
+    }
+  </script>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div class="brand">
+        <h1>Croton <em>Community Forum</em></h1>
+        <div class="tag">Share perspectives. Find common ground. Shape the village.</div>
+      </div>
+      <button class="me" id="me-btn" title="Notification settings">
+        <span id="me-label">Sign up for updates</span>
+        <span class="dot" id="me-dot">+</span>
+      </button>
+    </div>
+
+    <h2>Open topics <small>sorted by engagement</small></h2>
+    <div id="topics"><p class="muted">Loading topics…</p></div>
+
+    <h2 id="new-topic">Start a new topic</h2>
+    <div class="card">
+      <p class="muted">
+        Anyone can open a topic — no login needed. Give it a clear title, a
+        little context, and a few starting statements for neighbors to vote on.
+      </p>
+      <form id="create-form" autocomplete="off">
+        <label for="f-topic">Topic title</label>
+        <input type="text" id="f-topic" maxlength="140" required
+               placeholder="Should the village add a crosswalk at…?">
+        <div class="charcount"><span id="cc-topic">0</span>/140</div>
+
+        <label for="f-desc">Context <span>(optional)</span></label>
+        <textarea id="f-desc" maxlength="600"
+                  placeholder="A little background so neighbors know what this is about."></textarea>
+
+        <label>Starting statements <span>(optional — short, one idea each)</span></label>
+        <input type="text" class="f-seed" maxlength="140" placeholder='e.g. "The village should…"'>
+        <input type="text" class="f-seed" maxlength="140" style="margin-top:0.5rem" placeholder="Another statement…">
+        <input type="text" class="f-seed" maxlength="140" style="margin-top:0.5rem" placeholder="Another statement…">
+
+        <!-- honeypot -->
+        <div class="hp" aria-hidden="true">
+          <label for="f-website">Website</label>
+          <input type="text" id="f-website" tabindex="-1" autocomplete="off">
+        </div>
+
+        <div style="margin-top:1.35rem">
+          <button type="submit" class="btn btn-primary" id="f-submit">
+            Create topic
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </button>
+        </div>
+        <div id="form-notice" class="notice"></div>
+      </form>
+    </div>
+
+    <div class="footer">
+      Voting is anonymous. Follow a topic to get new statements by email or
+      WhatsApp — each topic has its own update group, and you can leave any
+      time.
+    </div>
+  </div>
+
+  <!-- Account / notifications modal -->
+  <div class="overlay" id="acct-overlay">
+    <div class="modal">
+      <h3>Get updates</h3>
+      <p class="sub">
+        Create a lightweight account — just a name and where to reach you.
+        When topics you follow get new statements, we'll send them your way so
+        you can vote. No password, and voting stays anonymous.
+      </p>
+      <form id="acct-form" autocomplete="on">
+        <label for="a-name">Name <span>(what neighbors may see)</span></label>
+        <input type="text" id="a-name" maxlength="60" placeholder="Your name">
+
+        <div class="fieldlabel">Send updates via</div>
+        <div class="segmented">
+          <label><input type="radio" name="a-channel" value="email" checked>&#x2709;&#xfe0f; Email</label>
+          <label><input type="radio" name="a-channel" value="whatsapp">&#x1f4f1; WhatsApp</label>
+        </div>
+
+        <label for="a-contact" id="a-contact-label">Email address</label>
+        <input type="email" id="a-contact" required placeholder="you@example.com">
+
+        <div class="check">
+          <input type="checkbox" id="a-alltopics">
+          <label for="a-alltopics" style="margin:0;font-weight:400">Also tell me whenever a <b>new topic</b> is opened</label>
+        </div>
+
+        <div class="hp" aria-hidden="true">
+          <input type="text" id="a-website" tabindex="-1" autocomplete="off">
+        </div>
+
+        <div id="acct-notice" class="notice"></div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-quiet" id="acct-signout" style="margin-right:auto;display:none">Sign out on this device</button>
+          <button type="button" class="btn btn-outline" id="acct-cancel">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="acct-save">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    'use strict';
+
+    // ---------- Local identity ----------
+    var LS_ACCOUNT = 'ccf-account';
+    var LS_KEYS = 'ccf-creator-keys';
+    var LS_XID = 'ccf-xid';
+    var LS_TOKENS = 'ccf-tokens';
+
+    function lsGet(k, fallback) {
+      try { return JSON.parse(localStorage.getItem(k)) || fallback; }
+      catch (e) { return fallback; }
+    }
+    function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+
+    function myXid() {
+      var x = lsGet(LS_XID, null);
+      if (!x) {
+        x = 'web:' + ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, function (c) {
+          return (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16);
+        });
+        lsSet(LS_XID, x);
+      }
+      return x;
+    }
+    function account() { return lsGet(LS_ACCOUNT, null); }
+    function creatorKeys() { return lsGet(LS_KEYS, {}); }
+
+    function toast(msg) {
+      var t = document.getElementById('toast');
+      t.textContent = msg;
+      t.classList.add('show');
+      clearTimeout(t._h);
+      t._h = setTimeout(function () { t.classList.remove('show'); }, 3200);
+    }
+
+    function esc(s) {
+      var d = document.createElement('div');
+      d.textContent = s == null ? '' : String(s);
+      return d.innerHTML;
+    }
+
+    function api(path, body) {
+      return fetch(path, {
+        method: body ? 'POST' : 'GET',
+        headers: body ? { 'Content-Type': 'application/json' } : undefined,
+        body: body ? JSON.stringify(body) : undefined
+      }).then(function (r) {
+        return r.json().then(function (d) {
+          if (!r.ok) throw new Error(d.error || 'Request failed');
+          return d;
+        });
+      });
+    }
+
+    // ---------- Account modal ----------
+    var overlay = document.getElementById('acct-overlay');
+
+    function refreshMeButton() {
+      var a = account();
+      document.getElementById('me-label').textContent =
+        a ? (a.name || a.contact) : 'Sign up for updates';
+      document.getElementById('me-dot').textContent =
+        a ? (a.name || a.contact).charAt(0).toUpperCase() : '+';
+      document.getElementById('acct-signout').style.display = a ? '' : 'none';
+    }
+
+    document.getElementById('me-btn').addEventListener('click', function () {
+      var a = account();
+      if (a) {
+        document.getElementById('a-name').value = a.name || '';
+        document.getElementById('a-contact').value = a.contact || '';
+        var radios = document.getElementsByName('a-channel');
+        for (var i = 0; i < radios.length; i++) radios[i].checked = radios[i].value === (a.channel || 'email');
+        document.getElementById('a-alltopics').checked = !!a.allTopics;
+        syncChannelUI();
+      }
+      overlay.classList.add('open');
+    });
+    document.getElementById('acct-cancel').addEventListener('click', function () {
+      overlay.classList.remove('open');
+    });
+    overlay.addEventListener('click', function (e) {
+      if (e.target === overlay) overlay.classList.remove('open');
+    });
+    document.getElementById('acct-signout').addEventListener('click', function () {
+      localStorage.removeItem(LS_ACCOUNT);
+      refreshMeButton();
+      overlay.classList.remove('open');
+      loadTopics();
+      toast('Signed out on this device.');
+    });
+
+    function syncChannelUI() {
+      var ch = document.querySelector('input[name="a-channel"]:checked').value;
+      var label = document.getElementById('a-contact-label');
+      var input = document.getElementById('a-contact');
+      if (ch === 'whatsapp') {
+        label.textContent = 'WhatsApp number';
+        input.type = 'tel';
+        input.placeholder = '(914) 555-0123';
+      } else {
+        label.textContent = 'Email address';
+        input.type = 'email';
+        input.placeholder = 'you@example.com';
+      }
+    }
+    Array.prototype.forEach.call(document.getElementsByName('a-channel'), function (r) {
+      r.addEventListener('change', syncChannelUI);
+    });
+
+    document.getElementById('acct-form').addEventListener('submit', function (e) {
+      e.preventDefault();
+      var notice = document.getElementById('acct-notice');
+      notice.className = 'notice';
+      var payload = {
+        name: document.getElementById('a-name').value,
+        channel: document.querySelector('input[name="a-channel"]:checked').value,
+        contact: document.getElementById('a-contact').value,
+        allTopics: document.getElementById('a-alltopics').checked,
+        website: document.getElementById('a-website').value
+      };
+      api('/public/account', payload).then(function (d) {
+        lsSet(LS_ACCOUNT, {
+          accountId: d.accountId,
+          name: d.name || payload.name,
+          channel: payload.channel,
+          contact: payload.contact,
+          allTopics: d.allTopics,
+          subs: d.subs || []
+        });
+        refreshMeButton();
+        overlay.classList.remove('open');
+        toast('You’re set up! Follow a topic to get its updates.');
+        loadTopics();
+      }).catch(function (err) {
+        notice.className = 'notice error';
+        notice.textContent = err.message;
+      });
+    });
+
+    // Open the modal, resolve when an account exists (or reject on cancel)
+    function requireAccount() {
+      return new Promise(function (resolve, reject) {
+        if (account()) return resolve(account());
+        overlay.classList.add('open');
+        var iv = setInterval(function () {
+          if (account()) { clearInterval(iv); resolve(account()); }
+          else if (!overlay.classList.contains('open')) { clearInterval(iv); reject(new Error('cancelled')); }
+        }, 300);
+      });
+    }
+
+    // ---------- Topics ----------
+    var topicsData = [];
+    var openPanels = {}; // zinvite -> voting session { token, current, voted, total }
+
+    function statLine(t) {
+      return '<div class="topic-stats">' +
+        '<span><b>' + (t.participant_count || 0) + '</b> participant' + (t.participant_count === 1 ? '' : 's') + '</span>' +
+        '<span><b>' + (t.statement_count || 0) + '</b> statement' + (t.statement_count === 1 ? '' : 's') + '</span>' +
+        '<span><b>' + (t.followers || 0) + '</b> following</span>' +
+        '</div>';
+    }
+
+    function renderTopics() {
+      var el = document.getElementById('topics');
+      if (!topicsData.length) {
+        el.innerHTML = '<p class="muted">No open topics right now — start one below!</p>';
+        return;
+      }
+      var keys = creatorKeys();
+      var a = account();
+      var mySubs = (a && a.subs) || [];
+
+      el.innerHTML = topicsData.map(function (t) {
+        var mine = !!keys[t.zinvite];
+        var following = mySubs.indexOf(t.zinvite) !== -1;
+        var open = !!openPanels[t.zinvite];
+        return '<div class="card" id="card-' + esc(t.zinvite) + '">' +
+          '<div class="topic-head">' +
+            '<div>' +
+              '<div class="topic-title">' + esc(t.topic) + (mine ? ' <span class="pill">yours</span>' : '') + '</div>' +
+              (t.description ? '<div class="topic-desc">' + esc(t.description) + '</div>' : '') +
+              statLine(t) +
+            '</div>' +
+          '</div>' +
+          '<div class="topic-actions">' +
+            '<button class="btn btn-primary" data-vote="' + esc(t.zinvite) + '">' + (open ? 'Hide voting' : 'Vote') + '</button>' +
+            '<button class="btn btn-outline' + (following ? ' following' : '') + '" data-follow="' + esc(t.zinvite) + '">' +
+              (following ? '&#x2713; Following' : 'Follow') + '</button>' +
+            '<a class="btn btn-link" href="/' + esc(t.zinvite) + '">Full view &rarr;</a>' +
+            (mine ? '<button class="btn btn-quiet" data-close="' + esc(t.zinvite) + '">Close topic</button>' : '') +
+          '</div>' +
+          '<div class="vote-panel" id="vp-' + esc(t.zinvite) + '" style="display:' + (open ? 'block' : 'none') + '"></div>' +
+        '</div>';
+      }).join('');
+
+      el.querySelectorAll('[data-vote]').forEach(function (b) {
+        b.addEventListener('click', function () { toggleVote(b.getAttribute('data-vote')); });
+      });
+      el.querySelectorAll('[data-follow]').forEach(function (b) {
+        b.addEventListener('click', function () { toggleFollow(b.getAttribute('data-follow')); });
+      });
+      el.querySelectorAll('[data-close]').forEach(function (b) {
+        b.addEventListener('click', function () { closeTopic(b.getAttribute('data-close')); });
+      });
+
+      // Re-render any open vote panels
+      Object.keys(openPanels).forEach(function (z) { drawVotePanel(z); });
+    }
+
+    function loadTopics() {
+      return api('/public/topics').then(function (d) {
+        topicsData = d;
+        renderTopics();
+      }).catch(function () {
+        document.getElementById('topics').innerHTML =
+          '<p class="muted">Couldn&rsquo;t load topics — please refresh.</p>';
+      });
+    }
+
+    // ---------- Follow / unfollow ----------
+    function toggleFollow(z) {
+      requireAccount().then(function (a) {
+        var following = (a.subs || []).indexOf(z) !== -1;
+        return api(following ? '/public/unsubscribe' : '/public/subscribe',
+                   { accountId: a.accountId, zinvite: z })
+          .then(function (d) {
+            a.subs = d.subs || [];
+            lsSet(LS_ACCOUNT, a);
+            toast(following
+              ? 'Unfollowed — no more updates for that topic.'
+              : 'Following! New statements will reach you by ' + (a.channel === 'whatsapp' ? 'WhatsApp' : 'email') + '.');
+            loadTopics();
+          });
+      }).catch(function (err) {
+        if (err.message !== 'cancelled') toast(err.message);
+      });
+    }
+
+    // ---------- Close own topic ----------
+    function closeTopic(z) {
+      if (!confirm('Close this topic? Voting ends and it leaves the list.')) return;
+      api('/public/close', { zinvite: z, key: creatorKeys()[z] })
+        .then(function () { delete openPanels[z]; toast('Topic closed.'); loadTopics(); })
+        .catch(function (err) { toast(err.message); });
+    }
+
+    // ---------- Voting ----------
+    function tokens() { return lsGet(LS_TOKENS, {}); }
+    function saveToken(z, tok) { var t = tokens(); t[z] = tok; lsSet(LS_TOKENS, t); }
+
+    function toggleVote(z) {
+      if (openPanels[z]) {
+        delete openPanels[z];
+        renderTopics();
+        return;
+      }
+      openPanels[z] = { loading: true };
+      renderTopics();
+      fetch('/api/v3/participationInit?conversation_id=' + encodeURIComponent(z) +
+            '&xid=' + encodeURIComponent(myXid()))
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          var tok = (d.auth && d.auth.token) || tokens()[z];
+          if (d.auth && d.auth.token) saveToken(z, d.auth.token);
+          openPanels[z] = {
+            token: tok,
+            current: d.nextComment && d.nextComment.tid !== undefined ? d.nextComment : null,
+            voted: (d.votes || []).length,
+            total: d.nextComment ? (d.votes || []).length + (d.nextComment.remaining || 0) + 1 : (d.votes || []).length
+          };
+          drawVotePanel(z);
+        })
+        .catch(function () {
+          delete openPanels[z];
+          renderTopics();
+          toast('Couldn’t start voting — please try again.');
+        });
+    }
+
+    function drawVotePanel(z) {
+      var p = openPanels[z];
+      var el = document.getElementById('vp-' + z);
+      if (!p || !el) return;
+      el.style.display = 'block';
+
+      if (p.loading) { el.innerHTML = '<p class="muted">Loading&hellip;</p>'; return; }
+
+      var writeBlock =
+        '<div class="vp-write">' +
+          '<div class="fieldlabel">Add your own statement <span>(one clear idea, under 140 characters)</span></div>' +
+          '<textarea id="w-' + z + '" maxlength="140" placeholder="I think the village should&hellip;"></textarea>' +
+          '<div style="margin-top:0.6rem"><button class="btn btn-outline" data-submit-stmt="' + z + '">Submit statement</button></div>' +
+        '</div>';
+
+      if (!p.current) {
+        el.innerHTML =
+          '<div class="vp-done">' +
+            '<div class="big">&#x1f389;</div>' +
+            '<p><b>You’ve voted on every statement' + (p.voted ? ' (' + p.voted + ')' : '') + '.</b><br>' +
+            'Add your own below, or follow the topic to hear when neighbors write new ones.</p>' +
+          '</div>' + writeBlock;
+      } else {
+        var done = p.total ? Math.min(p.voted, p.total) : 0;
+        var pct = p.total ? Math.round(done / p.total * 100) : 0;
+        el.innerHTML =
+          '<div class="vp-progress">Statement ' + (done + 1) + (p.total ? ' of ' + p.total : '') + '</div>' +
+          '<div class="vp-bar"><i style="width:' + pct + '%"></i></div>' +
+          '<div class="vp-statement">&ldquo;' + esc(p.current.txt) + '&rdquo;</div>' +
+          '<div class="vp-buttons">' +
+            '<button class="btn btn-agree" data-v="1" data-z="' + z + '">&#x1f44d; Agree</button>' +
+            '<button class="btn btn-disagree" data-v="-1" data-z="' + z + '">&#x1f44e; Disagree</button>' +
+            '<button class="btn btn-pass" data-v="0" data-z="' + z + '">Pass</button>' +
+          '</div>' + writeBlock;
+      }
+
+      el.querySelectorAll('[data-v]').forEach(function (b) {
+        b.addEventListener('click', function () {
+          castVote(z, parseInt(b.getAttribute('data-v'), 10));
+        });
+      });
+      el.querySelectorAll('[data-submit-stmt]').forEach(function (b) {
+        b.addEventListener('click', function () { submitStatement(z, b); });
+      });
+    }
+
+    function castVote(z, v) {
+      var p = openPanels[z];
+      if (!p || !p.current) return;
+      var el = document.getElementById('vp-' + z);
+      el.querySelectorAll('.vp-buttons .btn').forEach(function (b) { b.disabled = true; });
+      fetch('/api/v3/votes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + p.token },
+        body: JSON.stringify({ conversation_id: z, tid: p.current.tid, vote: v })
+      }).then(function (r) {
+        if (!r.ok) throw new Error('vote failed');
+        return r.json();
+      }).then(function (d) {
+        p.voted++;
+        p.current = d.nextComment && d.nextComment.tid !== undefined ? d.nextComment : null;
+        if (p.current && p.total < p.voted + (p.current.remaining || 0) + 1) {
+          p.total = p.voted + (p.current.remaining || 0) + 1;
+        }
+        drawVotePanel(z);
+      }).catch(function () {
+        toast('That vote didn’t go through — try again.');
+        drawVotePanel(z);
+      });
+    }
+
+    function submitStatement(z, btn) {
+      var p = openPanels[z];
+      var ta = document.getElementById('w-' + z);
+      var txt = (ta.value || '').trim();
+      if (txt.length < 5) { toast('Statements need at least a few words.'); return; }
+      btn.disabled = true;
+      fetch('/api/v3/comments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + p.token },
+        body: JSON.stringify({ conversation_id: z, txt: txt })
+      }).then(function (r) {
+        if (r.status === 409) throw new Error('Looks like that statement already exists.');
+        if (!r.ok) throw new Error('Couldn’t submit your statement — try again.');
+        return r.json();
+      }).then(function () {
+        ta.value = '';
+        btn.disabled = false;
+        toast('Statement submitted! Neighbors can vote on it now.');
+      }).catch(function (err) {
+        btn.disabled = false;
+        toast(err.message);
+      });
+    }
+
+    // ---------- Create topic ----------
+    document.getElementById('f-topic').addEventListener('input', function (e) {
+      document.getElementById('cc-topic').textContent = e.target.value.length;
+    });
+
+    document.getElementById('create-form').addEventListener('submit', function (e) {
+      e.preventDefault();
+      var notice = document.getElementById('form-notice');
+      var submit = document.getElementById('f-submit');
+      notice.className = 'notice';
+      submit.disabled = true;
+
+      var statements = Array.prototype.map.call(
+        document.querySelectorAll('.f-seed'),
+        function (i) { return i.value.trim(); }
+      ).filter(Boolean);
+
+      var a = account();
+      api('/public/create', {
+        topic: document.getElementById('f-topic').value,
+        description: document.getElementById('f-desc').value,
+        statements: statements,
+        accountId: a ? a.accountId : undefined,
+        website: document.getElementById('f-website').value
+      }).then(function (d) {
+        var keys = creatorKeys();
+        keys[d.zinvite] = d.creatorKey;
+        lsSet(LS_KEYS, keys);
+        if (a) {
+          a.subs = (a.subs || []);
+          if (a.subs.indexOf(d.zinvite) === -1) a.subs.push(d.zinvite);
+          lsSet(LS_ACCOUNT, a);
+        }
+        submit.disabled = false;
+        notice.className = 'notice success';
+        notice.innerHTML = '&#x2705; Your topic is live' + (a ? ' and you’re following it' : '') + '! ' +
+          'Vote on it above, or <a href="/' + esc(d.zinvite) + '">open the full view</a>.' +
+          (a ? '' : ' <b>Tip:</b> sign up for updates (top right) to hear when neighbors add statements.');
+        document.getElementById('create-form').reset();
+        document.getElementById('cc-topic').textContent = '0';
+        loadTopics();
+      }).catch(function (err) {
+        submit.disabled = false;
+        notice.className = 'notice error';
+        notice.textContent = err.message;
+      });
+    });
+
+    // ---------- Boot ----------
+    refreshMeButton();
+    loadTopics();
+  </script>
+</body>
+</html>
