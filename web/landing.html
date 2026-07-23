@@ -175,8 +175,8 @@
     .rv-btns { display: flex; gap: 0.3rem; flex-shrink: 0; }
     .rv-btn { border: 1.5px solid var(--line); background: rgba(255,255,255,0.75); border-radius: 8px; padding: 0.3rem 0.55rem; font-size: 0.78rem; cursor: pointer; font-family: inherit; transition: all 0.12s ease; }
     .rv-btn:hover { border-color: #aaa; }
-    .rv-btn.active-1 { background: var(--green); border-color: var(--green); color: #fff; }
-    .rv-btn.active--1 { background: #8a4f4f; border-color: #8a4f4f; color: #fff; }
+    .rv-btn.active--1 { background: var(--green); border-color: var(--green); color: #fff; }
+    .rv-btn.active-1 { background: #8a4f4f; border-color: #8a4f4f; color: #fff; }
     .rv-btn.active-0 { background: #888; border-color: #888; color: #fff; }
 
     .vp-write { margin-top: 1rem; }
@@ -736,8 +736,8 @@
           '<div class="vp-bar"><i style="width:' + pct + '%"></i></div>' +
           '<div class="vp-statement">&ldquo;' + esc(p.current.txt) + '&rdquo;</div>' +
           '<div class="vp-buttons">' +
-            '<button class="btn btn-agree" data-v="1" data-z="' + z + '">&#x1f44d; Agree</button>' +
-            '<button class="btn btn-disagree" data-v="-1" data-z="' + z + '">&#x1f44e; Disagree</button>' +
+            '<button class="btn btn-agree" data-v="-1" data-z="' + z + '">&#x1f44d; Agree</button>' +
+            '<button class="btn btn-disagree" data-v="1" data-z="' + z + '">&#x1f44e; Disagree</button>' +
             '<button class="btn btn-pass" data-v="0" data-z="' + z + '">Pass</button>' +
           '</div>' + writeBlock;
       }
@@ -797,7 +797,7 @@
             '" data-cv-tid="' + c.tid + '" data-cv-v="' + v + '">' + label + '</button>';
         }
         return '<div class="rv-row"><div class="rv-txt">' + esc(c.txt) + '</div>' +
-          '<div class="rv-btns">' + b(1, '&#x1f44d;') + b(-1, '&#x1f44e;') + b(0, 'Pass') + '</div></div>';
+          '<div class="rv-btns">' + b(-1, '&#x1f44d;') + b(1, '&#x1f44e;') + b(0, 'Pass') + '</div></div>';
       }).join('');
       el.querySelectorAll('[data-cv-tid]').forEach(function (btn) {
         btn.addEventListener('click', function () {

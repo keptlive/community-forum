@@ -200,7 +200,7 @@ async function vote(token, zinvite, tid, voteValue) {
   const result = await polisRequest('POST', '/api/v3/votes', {
     conversation_id: zinvite,
     tid: tid,
-    vote: voteValue, // -1=disagree, 0=pass, 1=agree
+    vote: voteValue, // Polis convention: -1=agree, 0=pass, 1=disagree
   }, token);
 
   if (result.status !== 200) {
@@ -530,8 +530,9 @@ async function handleDM(phone, name, text) {
     // --- Phase: voting ---
     if (state.phase === 'voting' && state.token && state.lastTid !== undefined) {
       let voteValue = null;
-      if (['agree', 'yes', 'a', '👍', 'y', '1'].includes(trimmed)) voteValue = 1;
-      else if (['disagree', 'no', 'd', '👎', 'n', '-1'].includes(trimmed)) voteValue = -1;
+      // Polis stores agree as -1 and disagree as +1 (see server report.ts)
+      if (['agree', 'yes', 'a', '👍', 'y', '1'].includes(trimmed)) voteValue = -1;
+      else if (['disagree', 'no', 'd', '👎', 'n', '-1'].includes(trimmed)) voteValue = 1;
       else if (['skip', 'pass', 's', '⏭️', '⏭', 'p', '0'].includes(trimmed)) voteValue = 0;
       else if (trimmed === 'new' || trimmed === 'write') {
         state.phase = 'writing';
