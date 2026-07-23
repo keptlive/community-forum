@@ -168,6 +168,17 @@
     .btn-pass { border: 1.5px solid var(--line); background: rgba(255,255,255,0.75); color: var(--muted); }
     .btn-pass:hover { border-color: #aaa; }
 
+    .vp-review { margin-top: 1rem; }
+    .rv-row { display: flex; align-items: center; justify-content: space-between; gap: 0.7rem; padding: 0.55rem 0; border-bottom: 1px dashed rgba(0,0,0,0.06); }
+    .rv-row:last-child { border-bottom: none; }
+    .rv-txt { font-size: 0.85rem; line-height: 1.5; color: #444; flex: 1; }
+    .rv-btns { display: flex; gap: 0.3rem; flex-shrink: 0; }
+    .rv-btn { border: 1.5px solid var(--line); background: rgba(255,255,255,0.75); border-radius: 8px; padding: 0.3rem 0.55rem; font-size: 0.78rem; cursor: pointer; font-family: inherit; transition: all 0.12s ease; }
+    .rv-btn:hover { border-color: #aaa; }
+    .rv-btn.active-1 { background: var(--green); border-color: var(--green); color: #fff; }
+    .rv-btn.active--1 { background: #8a4f4f; border-color: #8a4f4f; color: #fff; }
+    .rv-btn.active-0 { background: #888; border-color: #888; color: #fff; }
+
     .vp-write { margin-top: 1rem; }
     .vp-write textarea { min-height: 3.6rem; }
     .vp-done { text-align: center; padding: 0.8rem 0 0.4rem; }
@@ -703,6 +714,11 @@
           '<div class="fieldlabel">Add your own statement <span>(one clear idea, under 140 characters)</span></div>' +
           '<textarea id="w-' + z + '" maxlength="140" placeholder="I think the village should&hellip;"></textarea>' +
           '<div style="margin-top:0.6rem"><button class="btn btn-outline" data-submit-stmt="' + z + '">Submit statement</button></div>' +
+        '</div>' +
+        '<div class="vp-review">' +
+          '<button class="btn btn-link" data-review="' + z + '">' +
+            (p.reviewOpen ? 'Hide your votes' : 'Review &amp; change your votes') + '</button>' +
+          '<div id="rv-' + z + '"></div>' +
         '</div>';
 
       if (!p.current) {
@@ -733,6 +749,78 @@
       });
       el.querySelectorAll('[data-submit-stmt]').forEach(function (b) {
         b.addEventListener('click', function () { submitStatement(z, b); });
+      });
+      el.querySelectorAll('[data-review]').forEach(function (b) {
+        b.addEventListener('click', function () {
+          p.reviewOpen = !p.reviewOpen;
+          drawVotePanel(z);
+          if (p.reviewOpen && !p.review) loadReview(z);
+        });
+      });
+      if (p.reviewOpen && p.review) renderReview(z);
+    }
+
+    // --- Review & change past votes ---
+    function loadReview(z) {
+      var p = openPanels[z];
+      var el = document.getElementById('rv-' + z);
+      if (el) el.innerHTML = '<p class="muted" style="margin-top:0.6rem">Loading your votes&hellip;</p>';
+      Promise.all([
+        fetch('/api/v3/participationInit?conversation_id=' + encodeURIComponent(z) +
+              '&xid=' + encodeURIComponent(myXid())).then(function (r) { return r.json(); }),
+        fetch('/api/v3/comments?conversation_id=' + encodeURIComponent(z), {
+          headers: { 'Authorization': 'Bearer ' + p.token }
+        }).then(function (r) { return r.json(); })
+      ]).then(function (res) {
+        var votes = {};
+        (res[0].votes || []).forEach(function (v) { votes[v.tid] = v.vote; });
+        p.review = { votes: votes, comments: Array.isArray(res[1]) ? res[1] : [] };
+        renderReview(z);
+      }).catch(function () {
+        if (el) el.innerHTML = '<p class="muted" style="margin-top:0.6rem">Couldn&rsquo;t load your votes.</p>';
+      });
+    }
+
+    function renderReview(z) {
+      var p = openPanels[z];
+      var el = document.getElementById('rv-' + z);
+      if (!el || !p || !p.review) return;
+      var rows = p.review.comments.filter(function (c) { return p.review.votes[c.tid] !== undefined; });
+      if (!rows.length) {
+        el.innerHTML = '<p class="muted" style="margin-top:0.6rem">No votes yet &mdash; vote above first.</p>';
+        return;
+      }
+      el.innerHTML = rows.map(function (c) {
+        var cur = p.review.votes[c.tid];
+        function b(v, label) {
+          return '<button class="rv-btn' + (cur === v ? ' active-' + v : '') +
+            '" data-cv-tid="' + c.tid + '" data-cv-v="' + v + '">' + label + '</button>';
+        }
+        return '<div class="rv-row"><div class="rv-txt">' + esc(c.txt) + '</div>' +
+          '<div class="rv-btns">' + b(1, '&#x1f44d;') + b(-1, '&#x1f44e;') + b(0, 'Pass') + '</div></div>';
+      }).join('');
+      el.querySelectorAll('[data-cv-tid]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          changeVote(z, parseInt(btn.getAttribute('data-cv-tid'), 10),
+                        parseInt(btn.getAttribute('data-cv-v'), 10));
+        });
+      });
+    }
+
+    function changeVote(z, tid, v) {
+      var p = openPanels[z];
+      if (!p || !p.review || p.review.votes[tid] === v) return;
+      fetch('/api/v3/votes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + p.token },
+        body: JSON.stringify({ conversation_id: z, tid: tid, vote: v })
+      }).then(function (r) {
+        if (!r.ok) throw new Error('vote failed');
+        p.review.votes[tid] = v;
+        renderReview(z);
+        toast('Vote updated.');
+      }).catch(function () {
+        toast('That change didn\u2019t go through \u2014 try again.');
       });
     }
 
