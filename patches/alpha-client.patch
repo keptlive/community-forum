@@ -1,5 +1,5 @@
 diff --git a/client-participation-alpha/src/components/EmailSubscribeForm.tsx b/client-participation-alpha/src/components/EmailSubscribeForm.tsx
-index 0513566c7..728370d7b 100644
+index 0513566c7..97853783a 100644
 --- a/client-participation-alpha/src/components/EmailSubscribeForm.tsx
 +++ b/client-participation-alpha/src/components/EmailSubscribeForm.tsx
 @@ -1,5 +1,4 @@
@@ -8,7 +8,7 @@ index 0513566c7..728370d7b 100644
  import type { Translations } from '../strings/types'
  
  interface EmailSubscribeFormProps {
-@@ -7,12 +6,37 @@ interface EmailSubscribeFormProps {
+@@ -7,12 +6,43 @@ interface EmailSubscribeFormProps {
    conversation_id: string
  }
  
@@ -20,11 +20,17 @@ index 0513566c7..728370d7b 100644
 -    email,
 -    conversation_id,
 -    frequency: 1
++  let previousAccountId: string | undefined
++  try {
++    previousAccountId = JSON.parse(localStorage.getItem('ccf-account') || 'null')?.accountId
++  } catch {
++    // ignore — no prior account on this device
++  }
 +  const acctRes = await fetch('/public/account', {
 +    method: 'POST',
 +    headers: { 'Content-Type': 'application/json' },
-+    body: JSON.stringify({ channel: 'email', contact: email })
-   })
++    body: JSON.stringify({ channel: 'email', contact: email, previousAccountId })
++  })
 +  const acct = await acctRes.json()
 +  if (!acctRes.ok || !acct.accountId) throw new Error(acct.error || 'account failed')
 +
@@ -32,7 +38,7 @@ index 0513566c7..728370d7b 100644
 +    method: 'POST',
 +    headers: { 'Content-Type': 'application/json' },
 +    body: JSON.stringify({ accountId: acct.accountId, zinvite: conversation_id })
-+  })
+   })
 +  const sub = await subRes.json()
 +  if (!subRes.ok) throw new Error(sub.error || 'subscribe failed')
 +
