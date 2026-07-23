@@ -595,7 +595,7 @@
             '<button class="btn btn-primary" data-vote="' + esc(t.zinvite) + '">' + (open ? 'Hide voting' : 'Vote') + '</button>' +
             '<button class="btn btn-outline' + (following ? ' following' : '') + '" data-follow="' + esc(t.zinvite) + '">' +
               (following ? '&#x2713; Following' : 'Follow') + '</button>' +
-            '<a class="btn btn-link" href="/' + esc(t.zinvite) + '">Full view &rarr;</a>' +
+            '<a class="btn btn-link" href="/t/' + esc(t.slug || t.zinvite) + '">Full view &rarr;</a>' +
             (mine ? '<button class="btn btn-quiet" data-close="' + esc(t.zinvite) + '">Close topic</button>' : '') +
           '</div>' +
           '<div class="vote-panel" id="vp-' + esc(t.zinvite) + '" style="display:' + (open ? 'block' : 'none') + '"></div>' +
@@ -817,7 +817,7 @@
         submit.disabled = false;
         notice.className = 'notice success';
         notice.innerHTML = '&#x2705; Your topic is live' + (a ? ' and you’re following it' : '') + '! ' +
-          'Vote on it above, or <a href="/' + esc(d.zinvite) + '">open the full view</a>.' +
+          'Vote on it above, or <a href="' + esc(d.url) + '">open the full view</a>.' +
           (a ? '' : ' <b>Tip:</b> sign up for updates (top right) to hear when neighbors add statements.');
         document.getElementById('create-form').reset();
         document.getElementById('cc-topic').textContent = '0';
