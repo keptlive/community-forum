@@ -824,6 +824,24 @@ const server = http.createServer(async (req, res) => {
       return res.end(JSON.stringify({ seeded: results.length, results }));
     }
 
+    // POST /admin/close — deactivate any conversation (loopback-only, like
+    // /create; for moderation from the shell: curl -d '{"zinvite":"..."}')
+    if (req.method === 'POST' && req.url === '/admin/close') {
+      const body = await readBody(req);
+      if (!body.zinvite) {
+        res.writeHead(400);
+        return res.end(JSON.stringify({ error: 'zinvite required' }));
+      }
+      const result = await polisRequest('PUT', '/api/v3/conversations', {
+        conversation_id: body.zinvite,
+        is_active: false,
+      }, adminToken);
+      res.writeHead(result.status === 200 ? 200 : 502);
+      return res.end(JSON.stringify(result.status === 200
+        ? { ok: true, zinvite: body.zinvite }
+        : { error: 'close failed', details: result.data }));
+    }
+
     // --- WhatsApp voting endpoints ---
 
     // GET /conversations — list active conversations
