@@ -44,6 +44,9 @@ let communityTopics = {};
 // Each topic's "group" = the accounts whose subs include its zinvite.
 let webAccounts = {};
 
+// Human-readable URLs: slug -> zinvite (canonical share links /t/<slug>)
+let topicSlugs = {};
+
 function loadState() {
   try {
     if (fs.existsSync(STATE_FILE)) {
@@ -53,6 +56,7 @@ function loadState() {
       pendingNotifications = data.pendingNotifications || [];
       communityTopics = data.communityTopics || {};
       webAccounts = data.webAccounts || {};
+      topicSlugs = data.topicSlugs || {};
       console.log(`Loaded state for ${Object.keys(userState).length} users`);
     }
   } catch (e) {
@@ -69,6 +73,7 @@ function saveState() {
       pendingNotifications,
       communityTopics,
       webAccounts,
+      topicSlugs,
     }, null, 2));
   } catch (e) {
     console.error('Failed to save state:', e.message);
@@ -217,6 +222,33 @@ async function submitComment(token, zinvite, text) {
   return result.data;
 }
 
+// --- Human-readable topic URLs ---
+
+function slugify(topic) {
+  return String(topic).toLowerCase()
+    .replace(/['’]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .split('-').slice(0, 8).join('-')  // keep slugs reasonably short
+    .slice(0, 60).replace(/-+$/, '') || 'topic';
+}
+
+// Return the canonical slug for a conversation, creating one if needed.
+function ensureSlug(zinvite, topic) {
+  for (const [slug, z] of Object.entries(topicSlugs)) {
+    if (z === zinvite) return slug;
+  }
+  let base = slugify(topic), slug = base, n = 2;
+  while (topicSlugs[slug]) slug = `${base}-${n++}`;
+  topicSlugs[slug] = zinvite;
+  saveState();
+  return slug;
+}
+
+function topicUrl(zinvite, topic) {
+  return topic ? `${PUBLIC_URL}/t/${ensureSlug(zinvite, topic)}` : `${PUBLIC_URL}/${zinvite}`;
+}
+
 // Get active conversations list
 async function getActiveConversations() {
   const result = await polisRequest(
@@ -237,7 +269,8 @@ async function getActiveConversations() {
         topic: c.topic,
         description: c.description,
         participant_count: c.participant_count || 0,
-        url: `${PUBLIC_URL}/${c.conversation_id}`,
+        url: topicUrl(c.conversation_id, c.topic),
+        slug: ensureSlug(c.conversation_id, c.topic),
       }));
   }
   return [];
@@ -287,13 +320,19 @@ const MAILGUN_DOMAIN = process.env.MAILGUN_DOMAIN || '';
 const EMAIL_FROM = process.env.EMAIL_FROM
   || (MAILGUN_DOMAIN ? `Croton Community Forum <forum@${MAILGUN_DOMAIN}>` : '');
 
-function sendEmail(to, subject, text) {
+function sendEmail(to, subject, text, unsubUrl) {
   return new Promise((resolve) => {
     if (!MAILGUN_API_KEY || !MAILGUN_DOMAIN) {
       console.error('Email not configured (MAILGUN_API_KEY/MAILGUN_DOMAIN missing)');
       return resolve(false);
     }
-    const form = new URLSearchParams({ from: EMAIL_FROM, to, subject, text }).toString();
+    const fields = { from: EMAIL_FROM, to, subject, text };
+    if (unsubUrl) {
+      // RFC 8058 one-click unsubscribe — a strong deliverability signal
+      fields['h:List-Unsubscribe'] = `<${unsubUrl}>`;
+      fields['h:List-Unsubscribe-Post'] = 'List-Unsubscribe=One-Click';
+    }
+    const form = new URLSearchParams(fields).toString();
     const req = https.request({
       method: 'POST',
       hostname: 'api.mailgun.net',
@@ -347,7 +386,8 @@ async function notifyGroup(zinvite, topic, message, skipPhones) {
       await sendEmail(
         acct.contact,
         `${topic} — Croton Community Forum`,
-        `${message.replace(/\*/g, '')}\n\nVote here: ${PUBLIC_URL}/${zinvite}\n\n—\nCroton Community Forum · ${PUBLIC_URL}\nUnsubscribe from this topic: ${unsubscribeLink(accountId, zinvite)}\nUnsubscribe from everything: ${unsubscribeLink(accountId, null)}`
+        `${message.replace(/\*/g, '')}\n\nVote here: ${PUBLIC_URL}/${zinvite}\n\n—\nCroton Community Forum · ${PUBLIC_URL}\nUnsubscribe from this topic: ${unsubscribeLink(accountId, zinvite)}\nUnsubscribe from everything: ${unsubscribeLink(accountId, null)}`,
+        unsubscribeLink(accountId, zinvite)
       );
     }
   }
@@ -750,7 +790,7 @@ const server = http.createServer(async (req, res) => {
         return res.end(JSON.stringify({
           zid: conv.zid,
           zinvite: conv.conversation_id,
-          url: `${PUBLIC_URL}/${conv.conversation_id}`,
+          url: topicUrl(conv.conversation_id, body.topic),
           topic: body.topic,
         }));
       } else {
@@ -920,11 +960,24 @@ const server = http.createServer(async (req, res) => {
 
     // --- Public web hub routes (the ONLY ones nginx exposes to the internet) ---
 
+    // GET /t/:slug — human-readable topic URL, redirects to the voting page
+    const slugMatch = req.url?.match(/^\/t\/([a-z0-9-]+)$/);
+    if (req.method === 'GET' && slugMatch) {
+      const zinvite = topicSlugs[slugMatch[1]];
+      if (zinvite) {
+        res.writeHead(301, { Location: `${PUBLIC_URL}/alpha/${zinvite}` });
+        return res.end();
+      }
+      res.writeHead(302, { Location: `${PUBLIC_URL}/` });
+      return res.end();
+    }
+
     // GET /public/topics — active topics, safe fields only, sorted by engagement
     if (req.method === 'GET' && req.url === '/public/topics') {
       const convos = await getActiveConversations();
       const topics = convos.map(c => ({
         zinvite: c.zinvite,
+        slug: c.slug,
         topic: c.topic,
         description: c.description || '',
         participant_count: c.participant_count,
@@ -1024,6 +1077,10 @@ const server = http.createServer(async (req, res) => {
       if (req.method === 'POST') {
         const body = await readBody(req);
         accountId = body.accountId; zinvite = body.zinvite; all = body.all;
+        if (!accountId) {
+          const q = new URL(req.url, PUBLIC_URL).searchParams;
+          accountId = q.get('account'); zinvite = q.get('z'); all = q.get('all');
+        }
       } else {
         const q = new URL(req.url, PUBLIC_URL).searchParams;
         accountId = q.get('account'); zinvite = q.get('z'); all = q.get('all');
@@ -1141,7 +1198,8 @@ const server = http.createServer(async (req, res) => {
             await sendEmail(
               acct.contact,
               `New topic: ${topic} — Croton Community Forum`,
-              `A neighbor just opened a new topic:\n\n${topic}\n${description ? '\n' + description + '\n' : ''}\nVote here: ${PUBLIC_URL}/${zinvite}\n\n—\nCroton Community Forum · ${PUBLIC_URL}\nUnsubscribe from everything: ${unsubscribeLink(accountId, null)}`
+              `A neighbor just opened a new topic:\n\n${topic}\n${description ? '\n' + description + '\n' : ''}\nVote here: ${PUBLIC_URL}/${zinvite}\n\n—\nCroton Community Forum · ${PUBLIC_URL}\nUnsubscribe from everything: ${unsubscribeLink(accountId, null)}`,
+              unsubscribeLink(accountId, null)
             );
           }
         }
@@ -1151,7 +1209,8 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(200);
       return res.end(JSON.stringify({
         zinvite,
-        url: `${PUBLIC_URL}/${zinvite}`,
+        url: topicUrl(zinvite, topic),
+        slug: ensureSlug(zinvite, topic),
         topic,
         seeded,
         creatorKey,
