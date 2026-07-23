@@ -676,7 +676,9 @@
             token: tok,
             current: d.nextComment && d.nextComment.tid !== undefined ? d.nextComment : null,
             voted: (d.votes || []).length,
-            total: d.nextComment ? (d.votes || []).length + (d.nextComment.remaining || 0) + 1 : (d.votes || []).length
+            // Polis reports the authoritative statement total on nextComment
+            total: (d.nextComment && d.nextComment.total)
+              || (d.votes || []).length + (d.nextComment ? d.nextComment.remaining || 0 : 0)
           };
           drawVotePanel(z);
         })
@@ -748,9 +750,7 @@
       }).then(function (d) {
         p.voted++;
         p.current = d.nextComment && d.nextComment.tid !== undefined ? d.nextComment : null;
-        if (p.current && p.total < p.voted + (p.current.remaining || 0) + 1) {
-          p.total = p.voted + (p.current.remaining || 0) + 1;
-        }
+        if (p.current && p.current.total) p.total = p.current.total;
         drawVotePanel(z);
       }).catch(function () {
         toast('That vote didn’t go through — try again.');
