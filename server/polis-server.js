@@ -1054,6 +1054,17 @@ const server = http.createServer(async (req, res) => {
         if (name) webAccounts[accountId].name = name;
         if (body.allTopics !== undefined) webAccounts[accountId].allTopics = !!body.allTopics;
       }
+      // Channel switch: the browser passes its previous accountId — migrate
+      // its follows to this account and retire the old one, so nobody keeps
+      // getting notifications on a channel they moved away from.
+      const prev = body.previousAccountId && webAccounts[body.previousAccountId];
+      if (prev && body.previousAccountId !== accountId) {
+        const acct = webAccounts[accountId];
+        acct.subs = [...new Set([...(acct.subs || []), ...(prev.subs || [])])];
+        if (prev.allTopics && body.allTopics === undefined) acct.allTopics = true;
+        prev.subs = [];
+        prev.allTopics = false;
+      }
       saveState();
       res.writeHead(200);
       return res.end(JSON.stringify({

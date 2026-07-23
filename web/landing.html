@@ -521,6 +521,7 @@
       var notice = document.getElementById('acct-notice');
       notice.className = 'notice';
       var payload = {
+        previousAccountId: (account() || {}).accountId,
         name: document.getElementById('a-name').value,
         channel: document.querySelector('input[name="a-channel"]:checked').value,
         contact: document.getElementById('a-contact').value,
