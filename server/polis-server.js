@@ -404,7 +404,7 @@ async function notifyGroup(zinvite, topic, message, skipPhones) {
       await sendEmail(
         acct.contact,
         `${topic} — Croton Community Forum`,
-        `${message.replace(/\*/g, '')}\n\nVote here: ${PUBLIC_URL}/${zinvite}\n\n—\nCroton Community Forum · ${PUBLIC_URL}\nUnsubscribe from this topic: ${unsubscribeLink(accountId, zinvite)}\nUnsubscribe from everything: ${unsubscribeLink(accountId, null)}`,
+        `${message.replace(/\*/g, '')}\n\nVote here: ${topicUrl(zinvite, topic)}\n\n—\nCroton Community Forum · ${PUBLIC_URL}\nUnsubscribe from this topic: ${unsubscribeLink(accountId, zinvite)}\nUnsubscribe from everything: ${unsubscribeLink(accountId, null)}`,
         unsubscribeLink(accountId, zinvite)
       );
     }
@@ -850,7 +850,7 @@ const server = http.createServer(async (req, res) => {
         res.writeHead(200);
         return res.end(JSON.stringify({
           conversation_id: d.conversation_id || zinvite,
-          url: `${PUBLIC_URL}/${zinvite}`,
+          url: topicUrl(zinvite, d.topic),
           topic: d.topic || '',
           nextComment: d.nextComment,
           votes: d.votes?.length || 0,
@@ -878,6 +878,9 @@ const server = http.createServer(async (req, res) => {
         }, adminToken);
         results.push({ tid: result.data?.tid, text, status: result.status });
       }
+      conversationCommentCounts[body.zinvite] =
+        (conversationCommentCounts[body.zinvite] || 0) + results.filter(r => r.status === 200).length;
+      saveState();
       res.writeHead(200);
       return res.end(JSON.stringify({ seeded: results.length, results }));
     }
@@ -1191,6 +1194,7 @@ const server = http.createServer(async (req, res) => {
 
       const creatorKey = crypto.randomBytes(16).toString('base64url');
       communityTopics[zinvite] = { creatorKey, ip, created: new Date().toISOString() };
+      conversationCommentCounts[zinvite] = seeded;
       publicCreateLog.push({ ts: Date.now(), ip });
 
       // Creator with an account: auto-join their topic's group
@@ -1216,7 +1220,7 @@ const server = http.createServer(async (req, res) => {
             await sendEmail(
               acct.contact,
               `New topic: ${topic} — Croton Community Forum`,
-              `A neighbor just opened a new topic:\n\n${topic}\n${description ? '\n' + description + '\n' : ''}\nVote here: ${PUBLIC_URL}/${zinvite}\n\n—\nCroton Community Forum · ${PUBLIC_URL}\nUnsubscribe from everything: ${unsubscribeLink(accountId, null)}`,
+              `A neighbor just opened a new topic:\n\n${topic}\n${description ? '\n' + description + '\n' : ''}\nVote here: ${topicUrl(zinvite, topic)}\n\n—\nCroton Community Forum · ${PUBLIC_URL}\nUnsubscribe from everything: ${unsubscribeLink(accountId, null)}`,
               unsubscribeLink(accountId, null)
             );
           }
