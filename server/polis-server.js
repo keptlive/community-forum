@@ -907,10 +907,13 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    // GET /wa/state/:phone — get user's voting state (for debugging)
-    const stateMatch = req.url?.match(/^\/wa\/state\/([0-9]+)$/);
+    // GET /wa/state/:phone — get user's voting state (used by the router
+    // bridge to detect active sessions). WhatsApp identities aren't always
+    // bare digits — LID users arrive as "12345…@lid" — so accept any single
+    // path segment.
+    const stateMatch = req.url?.match(/^\/wa\/state\/([^/]+)$/);
     if (req.method === 'GET' && stateMatch) {
-      const phone = stateMatch[1];
+      const phone = decodeURIComponent(stateMatch[1]);
       res.writeHead(200);
       return res.end(JSON.stringify(userState[phone] || { phase: 'idle' }));
     }
