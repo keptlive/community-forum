@@ -75,7 +75,7 @@ index 90257a6d7..40fc586c0 100644
    // Match patterns like /alpha/2demo or just /2demo
    // Conversation IDs start with a digit followed by alphanumeric chars
 diff --git a/client-participation-alpha/src/pages/[conversation_id].astro b/client-participation-alpha/src/pages/[conversation_id].astro
-index dd7dc8866..c4c70da3d 100644
+index dd7dc8866..75ffe3560 100644
 --- a/client-participation-alpha/src/pages/[conversation_id].astro
 +++ b/client-participation-alpha/src/pages/[conversation_id].astro
 @@ -2,7 +2,7 @@
@@ -108,12 +108,27 @@ index dd7dc8866..c4c70da3d 100644
    {/* Handle JWT token from initial data on client side - MUST be synchronous to avoid race conditions */}
    <script define:vars={{ initialData }} is:inline>
      if (initialData && initialData.auth && initialData.auth.token) {
-@@ -200,12 +205,11 @@ const hideHeader = Astro.url.searchParams.get('hide_header');
+@@ -185,6 +190,14 @@ const hideHeader = Astro.url.searchParams.get('hide_header');
+               importanceEnabled={surveyDetails?.importanceEnabled}
+             />
+             <SurveyForm client:load s={s} conversation_id={conversation_id} requiresInviteCode={surveyDetails?.requiresInviteCode} />
++
++            {/* Croton: review & change your past votes (vanilla island — no
++                React dependency; talks to the same API with the stored
++                participant token). Polis convention: -1=agree, 1=disagree. */}
++            <div class="vr-widget">
++              <button type="button" id="vr-toggle">Review &amp; change your votes</button>
++              <div id="vr-list" hidden></div>
++            </div>
+             {surveyDetails?.requiresInviteCode && (<TreeviteInvites client:only="react" conversation_id={conversation_id} s={s} />)}
+           </>
+         ) : (
+@@ -200,12 +213,121 @@ const hideHeader = Astro.url.searchParams.get('hide_header');
      )}
  
      <div style="margin-top: 3rem; text-align: center;">
 -      <PolisLogo size={120} />
-+      
++
        <div class="footer-links">
          <a href="/privacy" target="_blank" rel="noopener noreferrer">{s.privacy}</a>
          <a href="/tos" target="_blank" rel="noopener noreferrer">{s.TOS}</a>
@@ -121,6 +136,116 @@ index dd7dc8866..c4c70da3d 100644
 -      <DonateMessage client:load />
      </div>
    </div>
++
++  <style is:global>
++    .vr-widget { margin: 1.5rem 0 0.5rem; }
++    .vr-widget > button {
++      background: none; border: none; cursor: pointer; font-family: inherit;
++      color: #3b6b4a; font-size: 0.9rem; font-weight: 600; padding: 0.3rem 0;
++      text-decoration: underline; text-underline-offset: 3px;
++    }
++    .vr-row {
++      display: flex; align-items: center; justify-content: space-between;
++      gap: 0.7rem; padding: 0.6rem 0; border-bottom: 1px dashed rgba(0,0,0,0.08);
++    }
++    .vr-row:last-child { border-bottom: none; }
++    .vr-txt { font-size: 0.9rem; line-height: 1.5; flex: 1; }
++    .vr-btns { display: flex; gap: 0.3rem; flex-shrink: 0; }
++    .vr-btn {
++      border: 1.5px solid #d0cec6; background: #fff; border-radius: 8px;
++      padding: 0.3rem 0.6rem; font-size: 0.8rem; cursor: pointer; font-family: inherit;
++    }
++    .vr-btn.on--1 { background: #3b6b4a; border-color: #3b6b4a; color: #fff; }
++    .vr-btn.on-1 { background: #8a4f4f; border-color: #8a4f4f; color: #fff; }
++    .vr-btn.on-0 { background: #888; border-color: #888; color: #fff; }
++    .vr-note { font-size: 0.85rem; color: #777; padding: 0.5rem 0; }
++  </style>
++
++  <script define:vars={{ conversation_id }} is:inline>
++    (function () {
++      var toggle = document.getElementById('vr-toggle');
++      var list = document.getElementById('vr-list');
++      if (!toggle || !list) return;
++      var state = null; // { votes: {tid: v}, comments: [] }
++
++      function token() {
++        try { return localStorage.getItem('participant_token_' + conversation_id); }
++        catch (e) { return null; }
++      }
++
++      function note(msg) { list.innerHTML = '<div class="vr-note">' + msg + '</div>'; }
++
++      function render() {
++        var rows = state.comments.filter(function (c) { return state.votes[c.tid] !== undefined; });
++        if (!rows.length) { note('No votes from this device yet — vote above first.'); return; }
++        list.textContent = '';
++        rows.forEach(function (c) {
++          var row = document.createElement('div');
++          row.className = 'vr-row';
++          var txt = document.createElement('div');
++          txt.className = 'vr-txt';
++          txt.textContent = c.txt;
++          var btns = document.createElement('div');
++          btns.className = 'vr-btns';
++          [[-1, '\u{1F44D}'], [1, '\u{1F44E}'], [0, 'Pass']].forEach(function (opt) {
++            var b = document.createElement('button');
++            b.type = 'button';
++            b.className = 'vr-btn' + (state.votes[c.tid] === opt[0] ? ' on-' + opt[0] : '');
++            b.textContent = opt[1];
++            b.addEventListener('click', function () { change(c.tid, opt[0]); });
++            btns.appendChild(b);
++          });
++          row.appendChild(txt);
++          row.appendChild(btns);
++          list.appendChild(row);
++        });
++      }
++
++      function change(tid, v) {
++        if (state.votes[tid] === v) return;
++        fetch('/api/v3/votes', {
++          method: 'POST',
++          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token() },
++          body: JSON.stringify({ conversation_id: conversation_id, tid: tid, vote: v })
++        }).then(function (r) {
++          if (!r.ok) throw new Error('vote failed');
++          state.votes[tid] = v;
++          render();
++        }).catch(function () { note('That change didn’t go through — try again.'); });
++      }
++
++      function load() {
++        var t = token();
++        if (!t) { note('No votes from this device yet — vote above first.'); return; }
++        note('Loading your votes…');
++        Promise.all([
++          fetch('/api/v3/participationInit?conversation_id=' + encodeURIComponent(conversation_id), {
++            headers: { 'Authorization': 'Bearer ' + t }
++          }).then(function (r) { return r.json(); }),
++          fetch('/api/v3/comments?conversation_id=' + encodeURIComponent(conversation_id), {
++            headers: { 'Authorization': 'Bearer ' + t }
++          }).then(function (r) { return r.json(); })
++        ]).then(function (res) {
++          var votes = {};
++          ((res[0] && res[0].votes) || []).forEach(function (v) { votes[v.tid] = v.vote; });
++          state = { votes: votes, comments: Array.isArray(res[1]) ? res[1] : [] };
++          render();
++        }).catch(function () { note('Couldn’t load your votes — refresh and try again.'); });
++      }
++
++      toggle.addEventListener('click', function () {
++        var open = !list.hidden;
++        list.hidden = open;
++        toggle.textContent = open ? 'Review & change your votes' : 'Hide your votes';
++        if (!open && !state) load();
++      });
++
++      // Keep the ballot fresh if it's open while the user keeps voting above
++      document.addEventListener('polis-vote-submitted', function () {
++        if (!list.hidden && state) load();
++      });
++    })();
++  </script>
  </Layout>
 diff --git a/client-participation-alpha/src/pages/layouts/Layout.astro b/client-participation-alpha/src/pages/layouts/Layout.astro
 index aa2560f61..243a56244 100644
