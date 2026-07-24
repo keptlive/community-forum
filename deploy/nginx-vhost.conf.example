@@ -42,6 +42,7 @@ server {
     location = / {
         root /var/www/polis;
         try_files /landing.html =404;
+        add_header Cache-Control "no-cache";
     }
 
     # Conversation IDs (start with a digit) go to the alpha participation client
