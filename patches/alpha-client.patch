@@ -75,7 +75,7 @@ index 90257a6d7..40fc586c0 100644
    // Match patterns like /alpha/2demo or just /2demo
    // Conversation IDs start with a digit followed by alphanumeric chars
 diff --git a/client-participation-alpha/src/pages/[conversation_id].astro b/client-participation-alpha/src/pages/[conversation_id].astro
-index dd7dc8866..75ffe3560 100644
+index dd7dc8866..7cd4d99e5 100644
 --- a/client-participation-alpha/src/pages/[conversation_id].astro
 +++ b/client-participation-alpha/src/pages/[conversation_id].astro
 @@ -2,7 +2,7 @@
@@ -96,7 +96,7 @@ index dd7dc8866..75ffe3560 100644
  import Layout from '../pages/layouts/Layout.astro'
  import { getTranslations } from '../strings/strings'
  import type { Translations } from '../strings/types'
-@@ -117,6 +117,11 @@ const hideHeader = Astro.url.searchParams.get('hide_header');
+@@ -117,6 +117,20 @@ const hideHeader = Astro.url.searchParams.get('hide_header');
    lang={pageLang || 'en'}
    dir={s.direction}
  >
@@ -104,11 +104,20 @@ index dd7dc8866..75ffe3560 100644
 +      URL, where it can't be derived from the address bar */}
 +  <script define:vars={{ conversation_id }} is:inline>
 +    window.__CONVERSATION_ID = conversation_id;
++    // Canonicalize the address bar to the readable /t/<slug> URL. Also heals
++    // browsers that cached the old 301 (/t/<slug> -> /alpha/<id>) from before
++    // slugs were served in place.
++    if (/^\/(?:alpha\/)?[0-9][0-9A-Za-z]+$/.test(location.pathname)) {
++      fetch('/public/topics').then(function (r) { return r.json(); }).then(function (ts) {
++        var t = (ts || []).find(function (x) { return x.zinvite === conversation_id; });
++        if (t && t.slug) history.replaceState(null, '', '/t/' + t.slug);
++      }).catch(function () {});
++    }
 +  </script>
    {/* Handle JWT token from initial data on client side - MUST be synchronous to avoid race conditions */}
    <script define:vars={{ initialData }} is:inline>
      if (initialData && initialData.auth && initialData.auth.token) {
-@@ -185,6 +190,14 @@ const hideHeader = Astro.url.searchParams.get('hide_header');
+@@ -185,6 +199,14 @@ const hideHeader = Astro.url.searchParams.get('hide_header');
                importanceEnabled={surveyDetails?.importanceEnabled}
              />
              <SurveyForm client:load s={s} conversation_id={conversation_id} requiresInviteCode={surveyDetails?.requiresInviteCode} />
@@ -123,7 +132,7 @@ index dd7dc8866..75ffe3560 100644
              {surveyDetails?.requiresInviteCode && (<TreeviteInvites client:only="react" conversation_id={conversation_id} s={s} />)}
            </>
          ) : (
-@@ -200,12 +213,121 @@ const hideHeader = Astro.url.searchParams.get('hide_header');
+@@ -200,12 +222,121 @@ const hideHeader = Astro.url.searchParams.get('hide_header');
      )}
  
      <div style="margin-top: 3rem; text-align: center;">
