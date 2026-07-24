@@ -608,7 +608,7 @@
             '<button class="btn btn-primary" data-vote="' + esc(t.zinvite) + '">' + (open ? 'Hide voting' : 'Vote') + '</button>' +
             '<button class="btn btn-outline' + (following ? ' following' : '') + '" data-follow="' + esc(t.zinvite) + '">' +
               (following ? '&#x2713; Following' : 'Follow') + '</button>' +
-            '<a class="btn btn-link" href="/t/' + esc(t.slug || t.zinvite) + '">Full view &rarr;</a>' +
+            '<a class="btn btn-link" href="/' + esc(t.slug || t.zinvite) + '">Full view &rarr;</a>' +
             (mine ? '<button class="btn btn-quiet" data-close="' + esc(t.zinvite) + '">Close topic</button>' : '') +
           '</div>' +
           '<div class="vote-panel" id="vp-' + esc(t.zinvite) + '" style="display:' + (open ? 'block' : 'none') + '"></div>' +

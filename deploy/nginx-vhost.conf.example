@@ -50,6 +50,24 @@ server {
         return 301 /alpha/$1;
     }
 
+    # Root-level readable topic URLs: the hub serves known slugs via
+    # X-Accel-Redirect (/_conv/) and passes unknown single-segment names
+    # through to Polis (/_polis/) so /home, /signin, etc. keep working.
+    location ~ "^/[a-z0-9-]+$" {
+        proxy_pass http://127.0.0.1:9876;
+        proxy_set_header Host $host;
+    }
+
+    location /_polis/ {
+        internal;
+        rewrite ^/_polis/(.*)$ /$1 break;
+        proxy_pass http://127.0.0.1:5000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 300;
+        proxy_buffering off;
+    }
+
     location /_astro/ {
         proxy_pass http://127.0.0.1:4321;
         proxy_set_header Host $host;
