@@ -238,7 +238,9 @@ function ensureSlug(zinvite, topic) {
   for (const [slug, z] of Object.entries(topicSlugs)) {
     if (z === zinvite) return slug;
   }
-  let base = slugify(topic), slug = base, n = 2;
+  let base = slugify(topic);
+  if (/^[0-9][0-9a-z]*$/.test(base)) base += '-topic';
+  let slug = base, n = 2;
   while (topicSlugs[slug]) slug = `${base}-${n++}`;
   topicSlugs[slug] = zinvite;
   saveState();
@@ -246,7 +248,7 @@ function ensureSlug(zinvite, topic) {
 }
 
 function topicUrl(zinvite, topic) {
-  return topic ? `${PUBLIC_URL}/t/${ensureSlug(zinvite, topic)}` : `${PUBLIC_URL}/${zinvite}`;
+  return topic ? `${PUBLIC_URL}/${ensureSlug(zinvite, topic)}` : `${PUBLIC_URL}/${zinvite}`;
 }
 
 // Get active conversations list
@@ -1275,6 +1277,20 @@ const server = http.createServer(async (req, res) => {
       saveState();
       res.writeHead(200);
       return res.end(JSON.stringify({ ok: true, zinvite: body.zinvite }));
+    }
+
+    // Root-level readable topic URLs (nginx routes single-segment lowercase
+    // paths here). Unknown names pass through to the Polis server so admin
+    // console routes like /home and /signin keep working.
+    const rootMatch = req.url?.match(/^\/([a-z0-9-]+)$/);
+    if (rootMatch) {
+      const z = topicSlugs[rootMatch[1]];
+      if (z && req.method === 'GET') {
+        res.writeHead(200, { 'X-Accel-Redirect': `/_conv/${z}` });
+        return res.end();
+      }
+      res.writeHead(200, { 'X-Accel-Redirect': `/_polis/${rootMatch[1]}` });
+      return res.end();
     }
 
     res.writeHead(404);
