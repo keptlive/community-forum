@@ -6,6 +6,20 @@
   <title>Croton Community Forum</title>
   <link rel="icon" href="/favicon.ico" type="image/x-icon">
   <link href="/fonts/fonts.css" rel="stylesheet">
+  <script>
+    /* Decide the page's mode BEFORE first paint so the correct layout renders
+       immediately — no flash of the home page on topic/activity URLs. Sets a
+       class on <html> that CSS reads; the main script reuses these globals. */
+    (function () {
+      var p = location.pathname.replace(/^\/(t\/)?/, '').replace(/\/$/, '');
+      window.__TOPIC_SLUG = /^[a-z0-9-]+$/.test(p) ? p : '';
+      var view = new URLSearchParams(location.search).get('view');
+      window.__ACTIVITY_VIEW = (['votes', 'statements', 'topics'].indexOf(view) !== -1) ? view : '';
+      var c = document.documentElement.classList;
+      if (window.__TOPIC_SLUG) c.add('boot-topic');
+      else if (window.__ACTIVITY_VIEW) c.add('boot-activity');
+    })();
+  </script>
   <style>
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -29,16 +43,110 @@
       background-attachment: fixed;
     }
 
-    .wrap { max-width: 780px; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; }
+    .wrap { max-width: 780px; margin: 0 auto; padding: 1.4rem 1.25rem 4rem; }
 
     /* --- Header --- */
+    .utility-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 0.8rem;
+      flex-wrap: wrap;
+      margin: 0 0 1.6rem;
+    }
+    .my-stats {
+      display: flex; gap: 1.2rem; align-items: center;
+      padding: 0.45rem 1.15rem; border-radius: 16px;
+      background: var(--card); border: 1px solid rgba(255,255,255,0.9);
+      box-shadow: 0 1px 4px rgba(26,26,46,0.06);
+      opacity: 0; transform: translateY(-4px);
+      transition: opacity 0.3s var(--ease-swift), transform 0.35s var(--ease-spring);
+    }
+    .my-stats.show { opacity: 1; transform: none; }
+    .ms {
+      display: flex; flex-direction: column; align-items: center; min-width: 3.2rem;
+      background: none; border: none; font-family: inherit; cursor: pointer;
+      padding: 0.15rem 0.35rem; border-radius: 9px;
+      transition: background-color 0.15s ease, transform 0.15s var(--ease-spring);
+    }
+    .ms:hover { background: var(--green-soft); transform: translateY(-1px); }
+    .ms:hover .ms-l { color: var(--green); }
+    .ms-n { font-weight: 700; font-size: 1.2rem; color: var(--green-dark); font-variant-numeric: tabular-nums; line-height: 1.2; }
+    .ms-l { font-size: 0.64rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--faint); transition: color 0.15s ease; margin-top: 0.05rem; }
+
+    /* Activity view (opened from the stat tiles) */
+    .activity-tabs { display: flex; gap: 0.4rem; margin: 0.5rem 0 1.2rem; flex-wrap: wrap; }
+    .activity-tabs button {
+      font: inherit; font-size: 0.85rem; font-weight: 600; padding: 0.45rem 0.95rem;
+      border-radius: 100px; border: 1.5px solid var(--line); background: rgba(255,255,255,0.7);
+      color: var(--muted); cursor: pointer; transition: all 0.15s ease;
+    }
+    .activity-tabs button:hover { border-color: var(--green); color: var(--green); }
+    .activity-tabs button.active { background: var(--green); border-color: var(--green); color: #fff; }
+    /* Each topic's activity sits in its own card box */
+    .act-group {
+      background: var(--card);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255,255,255,0.9);
+      border-radius: 16px;
+      padding: 1.1rem 1.3rem 1.2rem;
+      margin-bottom: 1rem;
+      box-shadow: 0 1px 5px rgba(26,26,46,0.05);
+      transition: box-shadow 0.2s ease;
+      animation: rise-in 0.4s var(--ease-spring) both;
+    }
+    .act-group:nth-child(2) { animation-delay: 0.05s; }
+    .act-group:nth-child(3) { animation-delay: 0.1s; }
+    .act-group:nth-child(4) { animation-delay: 0.15s; }
+    .act-group:nth-child(n+5) { animation-delay: 0.2s; }
+    .act-group:hover { box-shadow: 0 6px 22px rgba(26,26,46,0.08); }
+    .act-group h3 {
+      font-family: "Inter", sans-serif; font-size: 1rem; font-weight: 700;
+      margin: 0 0 0.9rem; padding-bottom: 0.7rem;
+      border-bottom: 1px solid rgba(0,0,0,0.06); display: flex;
+      align-items: baseline; justify-content: space-between; gap: 0.6rem;
+    }
+    .act-group h3 a { color: inherit; text-decoration: none; }
+    .act-group h3 a:hover { color: var(--green); }
+    .act-group h3 .count { font-size: 0.72rem; font-weight: 600; color: var(--green); background: var(--green-soft); padding: 0.2rem 0.6rem; border-radius: 100px; white-space: nowrap; }
+    .act-sub { font-size: 0.78rem; color: var(--faint); margin-bottom: 0.7rem; }
+    .act-empty { color: var(--muted); font-size: 0.95rem; padding: 3rem 1rem; text-align: center; }
+
+    /* Statement rows inside a card */
+    .act-stmt { padding: 0.7rem 0; border-bottom: 1px solid rgba(0,0,0,0.05); }
+    .act-stmt:first-child { padding-top: 0; }
+    .act-stmt:last-child { border-bottom: none; padding-bottom: 0; }
+    .act-stmt-txt { font-size: 0.92rem; line-height: 1.5; color: #2f2f2f; margin-bottom: 0.5rem; }
+    .act-stmt-stats { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+    .act-stmt-pct { font-size: 0.82rem; color: var(--ink); font-variant-numeric: tabular-nums; }
+    .act-stmt-pct b { font-size: 1rem; color: var(--green-dark); }
+    .act-stmt-bar { flex: 0 0 100px; height: 8px; border-radius: 4px; background: rgba(0,0,0,0.06); overflow: hidden; }
+    .act-stmt-bar i { display: block; height: 100%; border-radius: 4px; }
+    .act-stmt-meta { font-size: 0.76rem; color: var(--faint); }
+
+    /* My-topics: each created topic as its own card with a manage row */
+    .act-topic-row {
+      display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+    }
+    .act-topic-row .name { font-size: 1rem; font-weight: 700; }
+    .act-topic-row .name a { color: inherit; text-decoration: none; }
+    .act-topic-row .name a:hover { color: var(--green); }
+    .act-topic-row .meta { font-size: 0.78rem; color: var(--faint); margin-top: 0.25rem; }
+    .act-remove { flex-shrink: 0; font-size: 0.82rem; font-weight: 600; color: #a05050; background: rgba(255,255,255,0.6); border: 1.5px solid rgba(160,80,80,0.35); border-radius: 9px; padding: 0.45rem 0.85rem; cursor: pointer; transition: all 0.15s ease; }
+    .act-remove:hover { background: rgba(160,80,80,0.1); border-color: rgba(160,80,80,0.6); transform: translateY(-1px); }
+    .act-locked { flex-shrink: 0; font-size: 0.72rem; color: var(--faint); text-align: right; max-width: 11rem; line-height: 1.4; }
+
+    /* Votes review rows inside a card */
+    #activity-body .rv-row { padding: 0.55rem 0; border-bottom: 1px solid rgba(0,0,0,0.05); }
+    #activity-body .rv-row:first-child { padding-top: 0; }
+    #activity-body .rv-row:last-child { border-bottom: none; padding-bottom: 0; }
     .topbar {
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 1rem;
       flex-wrap: wrap;
-      margin-bottom: 2.25rem;
+      margin-bottom: 0.6rem;
     }
     .brand { display: flex; flex-direction: column; gap: 0.15rem; }
     .brand h1 {
@@ -57,14 +165,14 @@
       background: var(--card);
       border: 1px solid rgba(255,255,255,0.9);
       border-radius: 100px;
-      padding: 0.4rem 0.55rem 0.4rem 1rem;
-      font-size: 0.83rem;
+      padding: 0.4rem 0.6rem 0.4rem 1.05rem;
+      font-size: 0.86rem;
       box-shadow: 0 1px 4px rgba(26,26,46,0.06);
       cursor: pointer;
     }
     .me:hover { border-color: var(--green); }
     .me .dot {
-      width: 26px; height: 26px;
+      width: 32px; height: 32px;
       border-radius: 50%;
       background: var(--green);
       color: #fff;
@@ -80,6 +188,14 @@
       margin: 2.4rem 0 0.9rem;
     }
     h2 small { font-family: "Inter", sans-serif; font-size: 0.78rem; color: var(--faint); font-weight: 400; margin-left: 0.5rem; }
+    /* First section sits close to the tagline (later h2s keep the big gap) */
+    #topics-heading { margin-top: 1rem; }
+    #sort-toggle {
+      font: inherit; color: inherit; background: none; border: none; padding: 0;
+      cursor: pointer; transition: color 0.15s ease;
+    }
+    #sort-toggle:hover { color: var(--green); text-decoration: underline; text-underline-offset: 3px; }
+    #back-home { margin-top: 0.6rem; }
 
     /* --- Cards --- */
     .card {
@@ -95,10 +211,29 @@
 
     .topic-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.9rem; }
     .topic-title { font-weight: 600; font-size: 1.06rem; line-height: 1.45; }
+    .topic-title a { color: inherit; text-decoration: none; }
+    .topic-title a:hover { color: var(--green); text-decoration: underline; text-underline-offset: 3px; }
+    .topic-open {
+      flex-shrink: 0; width: 34px; height: 34px; display: inline-flex; align-items: center;
+      justify-content: center; border-radius: 50%; color: var(--muted); text-decoration: none;
+      background: rgba(255,255,255,0.75); border: 1.5px solid var(--line);
+      transition: background-color 0.18s ease, color 0.18s ease, border-color 0.18s ease,
+        transform 0.2s var(--ease-spring), box-shadow 0.2s ease;
+    }
+    .topic-open svg { transition: transform 0.2s var(--ease-spring); }
+    .topic-open:hover {
+      background: var(--green); border-color: var(--green); color: #fff;
+      transform: translate(1px, -1px); box-shadow: 0 4px 12px rgba(59,107,74,0.3);
+    }
+    .topic-open:hover svg { transform: translate(1px, -1px); }
     .topic-desc { font-size: 0.89rem; color: var(--muted); line-height: 1.55; margin-top: 0.45rem; }
     .topic-stats { margin-top: 0.7rem; display: flex; gap: 1.1rem; font-size: 0.76rem; color: var(--faint); flex-wrap: wrap; }
     .topic-stats b { color: var(--muted); font-weight: 600; }
     .topic-actions { margin-top: 0.95rem; display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; }
+    @media (max-width: 480px) {
+      .topic-actions { gap: 0.45rem; }
+      .topic-actions .btn { padding: 0.5rem 0.8rem; font-size: 0.82rem; }
+    }
 
     .pill {
       display: inline-block;
@@ -179,8 +314,128 @@
     .rv-btn.active-1 { background: #8a4f4f; border-color: #8a4f4f; color: #fff; }
     .rv-btn.active-0 { background: #888; border-color: #888; color: #fff; }
 
+    /* Share bar (topic pages) */
+    .share-bar {
+      margin: 0 0 1.6rem; padding: 1rem 1.3rem;
+      background: var(--card); backdrop-filter: blur(10px);
+      border: 1px solid rgba(255,255,255,0.88); border-radius: 16px;
+      box-shadow: 0 1px 5px rgba(26,26,46,0.05);
+    }
+    .share-hint { display: block; font-size: 0.86rem; font-weight: 600; color: var(--ink); margin-bottom: 0.75rem; }
+    .share-hint small { display: block; font-weight: 400; font-size: 0.78rem; color: var(--faint); margin-top: 0.1rem; }
+    .share-btns { display: flex; gap: 0.6rem; flex-wrap: wrap; align-items: center; }
+    .share-btn {
+      width: 40px; height: 40px; border-radius: 50%; display: inline-flex; align-items: center;
+      justify-content: center; color: var(--muted); background: rgba(255,255,255,0.8);
+      border: 1.5px solid var(--line); cursor: pointer; text-decoration: none;
+      transition: background-color 0.18s ease, color 0.18s ease, border-color 0.18s ease,
+        transform 0.2s var(--ease-spring), box-shadow 0.2s ease;
+    }
+    .share-btn:hover, .share-btn:active {
+      background: var(--green); border-color: var(--green); color: #fff;
+      transform: translateY(-2px); box-shadow: 0 4px 12px rgba(59,107,74,0.3);
+    }
+    @media (max-width: 480px) {
+      .share-bar { padding: 0.9rem 1rem; }
+      .share-btns { gap: 0.55rem; justify-content: space-between; }
+      .share-btn { width: 44px; height: 44px; flex: 0 1 auto; }
+      .share-btn svg { transform: scale(1.15); }
+    }
+    .bug-report { margin-top: 1.4rem; text-align: left; }
+    .bug-report summary { cursor: pointer; color: var(--muted); font-weight: 600; font-size: 0.82rem; }
+    .bug-report summary:hover { color: var(--green); }
+    .bug-report textarea, .bug-report input[type="text"] {
+      width: 100%; margin-top: 0.6rem; padding: 0.6rem 0.75rem; border-radius: 10px;
+      border: 1.5px solid var(--line); background: rgba(255,255,255,0.8);
+      font-family: inherit; font-size: 0.88rem; color: var(--ink);
+    }
+    .bug-report textarea { min-height: 4.2rem; resize: vertical; }
+    .bug-report textarea:focus, .bug-report input:focus { outline: none; border-color: var(--green); }
+    .bug-report .btn { margin-top: 0.6rem; }
+    .bug-mail { margin-top: 0.7rem; font-size: 0.78rem; color: var(--faint); }
+    .bug-mail a { color: var(--green); text-decoration: none; }
+    .bug-mail a:hover { text-decoration: underline; }
+
+    /* Floating on-screen notification (top center, transient) */
+    #screen-note {
+      position: fixed; top: 1.1rem; left: 50%; transform: translate(-50%, -12px);
+      z-index: 60; max-width: min(92vw, 26rem);
+      background: rgba(255,255,255,0.96); backdrop-filter: blur(8px);
+      border: 1px solid rgba(0,0,0,0.06); border-radius: 14px;
+      padding: 0.85rem 1.15rem; font-size: 0.92rem; line-height: 1.5; color: var(--ink);
+      box-shadow: 0 8px 30px rgba(26,26,46,0.16);
+      opacity: 0; pointer-events: none;
+      transition: opacity 0.25s ease, transform 0.25s ease;
+    }
+    #screen-note.show { opacity: 1; transform: translate(-50%, 0); }
+    #screen-note.success { border-color: rgba(76,132,96,0.35); background: rgba(240,248,242,0.97); color: var(--green-dark); }
+    .seg-check {
+      display: inline-block; margin-left: 0.35rem; font-weight: 700;
+      color: var(--green); opacity: 0; transform: scale(0.5);
+      transition: opacity 0.15s ease, transform 0.15s ease;
+    }
+    .segmented label.has-val .seg-check { opacity: 1; transform: scale(1); }
     .vp-write { margin-top: 1rem; }
     .vp-write textarea { min-height: 3.6rem; }
+
+    /* ---------- Results visualization ----------
+       Palette validated (dataviz six checks, light surface):
+       diverging agree/disagree = aqua/orange; groups = blue/violet/magenta/yellow. */
+    :root {
+      --rz-agree: #1baf7a; --rz-disagree: #eb6834; --rz-pass: #d9d6cd;
+      --rz-g1: #2a78d6; --rz-g2: #4a3aa7; --rz-g3: #e87ba4; --rz-g4: #eda100;
+      --rz-track: rgba(0,0,0,0.06); --rz-axis: rgba(0,0,0,0.14);
+    }
+    .results-panel { display: none; margin-top: 1.1rem; padding-top: 1.1rem; border-top: 1px solid rgba(0,0,0,0.07); }
+    .rz-tiles { display: flex; gap: 1.6rem; flex-wrap: wrap; margin-bottom: 1.1rem; }
+    .rz-tile-label { font-size: 0.7rem; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--faint); }
+    .rz-tile-value { font-family: "Inter", system-ui, sans-serif; font-weight: 600; font-size: 1.45rem; color: var(--ink); line-height: 1.2; }
+    .rz-h { font-size: 0.78rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); margin: 1.2rem 0 0.2rem; }
+    .rz-sub { font-size: 0.8rem; color: var(--faint); margin-bottom: 0.7rem; }
+    .rz-legend { display: flex; gap: 1rem; flex-wrap: wrap; font-size: 0.78rem; color: var(--muted); margin: 0.4rem 0 0.8rem; }
+    .rz-legend i, .rz-chip i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 0.35rem; vertical-align: baseline; }
+    .rz-row { margin-bottom: 0.95rem; }
+    .rz-txt { font-size: 0.88rem; line-height: 1.45; color: #3a3a3a; margin-bottom: 0.3rem; }
+    .rz-barwrap { display: flex; align-items: center; gap: 0.55rem; }
+    .rz-pct { font-size: 0.75rem; font-weight: 600; color: var(--muted); min-width: 2.6rem; font-variant-numeric: tabular-nums; }
+    .rz-pct.l { text-align: right; }
+    .rz-bar { position: relative; flex: 1; height: 14px; }
+    .rz-bar::before { content: ""; position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: var(--rz-axis); }
+    .rz-seg { position: absolute; top: 0; height: 14px; }
+    .rz-seg.agree { background: var(--rz-agree); border-radius: 0 4px 4px 0; }
+    .rz-seg.disagree { background: var(--rz-disagree); border-radius: 4px 0 0 4px; }
+    .rz-seg.pass { background: var(--rz-pass); border-radius: 2px; }
+    .rz-n { font-size: 0.72rem; color: var(--faint); margin-top: 0.15rem; }
+    .rz-chips { display: flex; gap: 0.9rem; flex-wrap: wrap; margin: 0.3rem 0 0.9rem; font-size: 0.82rem; color: var(--muted); }
+    .rz-dumb { height: 22px; margin: 0.25rem 0 0.1rem; padding: 0 10px; }
+    .rz-dcoord { position: relative; height: 100%; }
+    .rz-dumb .track { position: absolute; left: 0; right: 0; top: 10px; height: 2px; background: var(--rz-track); border-radius: 1px; }
+    .rz-dumb .link { position: absolute; top: 10px; height: 2px; background: rgba(0,0,0,0.18); }
+    .rz-dumb .dot { position: absolute; top: 5px; width: 12px; height: 12px; border-radius: 50%; border: 2px solid #fdfcf9; box-sizing: border-box; box-shadow: 0 0 0 1px rgba(0,0,0,0.05); }
+    .rz-dumb .dl { position: absolute; top: -4px; font-size: 0.7rem; font-weight: 600; color: var(--muted); font-variant-numeric: tabular-nums; }
+    .rs-stats { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+    .rs-num { font-size: 0.8rem; color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .rs-num b { font-size: 0.92rem; }
+    .rs-num.muted { color: var(--faint); font-size: 0.76rem; }
+    .rs-bar { display: inline-block; height: 8px; border-radius: 4px; transform-origin: left center; }
+    .rz-row .rs-bar { transform: scaleX(0); }
+    .rp-in .rz-row .rs-bar { transform: scaleX(1); transition: transform 0.5s var(--ease-spring); }
+    .rz-adv { margin-top: 1.4rem; }
+    .rz-adv > summary {
+      font-size: 0.82rem; color: var(--green); font-weight: 600; cursor: pointer;
+      padding: 0.35rem 0; list-style-position: inside;
+    }
+    .rz-adv > summary:hover { text-decoration: underline; text-underline-offset: 3px; }
+    .rz-adv-body { padding-top: 0.2rem; }
+    .rz-adv .rz-row, .rz-adv .rz-chips { opacity: 1; transform: none; }
+    .rz-table { margin-top: 1rem; }
+    .rz-table summary { font-size: 0.8rem; color: var(--green); font-weight: 600; cursor: pointer; }
+    .rz-table table { width: 100%; border-collapse: collapse; margin-top: 0.6rem; font-size: 0.8rem; }
+    .rz-table th, .rz-table td { text-align: left; padding: 0.35rem 0.5rem; border-bottom: 1px solid rgba(0,0,0,0.06); color: #444; }
+    .rz-table th { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--faint); }
+    .rz-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+    #rz-tip { position: fixed; z-index: 50; background: #262626; color: #f5f4f0; font-size: 0.75rem; line-height: 1.5;
+      padding: 0.45rem 0.65rem; border-radius: 8px; pointer-events: none; display: none; max-width: 240px; box-shadow: 0 4px 14px rgba(0,0,0,0.25); }
     .vp-done { text-align: center; padding: 0.8rem 0 0.4rem; }
     .vp-done .big { font-size: 1.5rem; margin-bottom: 0.4rem; }
     .vp-done p { color: var(--muted); font-size: 0.9rem; line-height: 1.6; }
@@ -300,6 +555,143 @@
       text-align: center;
     }
     .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    /* ============ Motion layer ============
+       One easing family, transform/opacity only (compositor-friendly),
+       entrances on fresh nodes, and a full reduced-motion opt-out. */
+    :root {
+      --ease-spring: cubic-bezier(0.22, 1, 0.36, 1);
+      --ease-swift: cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    /* Buttons: lift on hover, satisfying press, visible keyboard focus */
+    .btn {
+      transition: transform 0.18s var(--ease-spring), box-shadow 0.18s var(--ease-swift),
+        background-color 0.18s var(--ease-swift), border-color 0.18s var(--ease-swift),
+        color 0.18s var(--ease-swift), opacity 0.18s var(--ease-swift);
+    }
+    .btn:active:not(:disabled) { transform: scale(0.96); transition-duration: 0.06s; }
+    .btn-primary:hover { box-shadow: 0 5px 16px rgba(59, 107, 74, 0.35); }
+    .btn:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+
+    /* Topic cards: quiet hover raise */
+    #topics .card { transition: transform 0.25s var(--ease-spring), box-shadow 0.25s var(--ease-swift); }
+    #topics .card:hover { transform: translateY(-2px); box-shadow: 0 8px 28px rgba(26, 26, 46, 0.09); }
+
+    /* Entrances */
+    @keyframes rise-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+    @keyframes pop-in { 0% { opacity: 0; transform: scale(0.5); } 62% { transform: scale(1.08); } 100% { opacity: 1; transform: scale(1); } }
+    .vp-statement { animation: rise-in 0.3s var(--ease-spring) both; }
+    .vp-done .big { animation: pop-in 0.5s var(--ease-spring) both; }
+    .vp-bar i { transition: width 0.45s var(--ease-spring); }
+
+    /* Results: bars draw from their anchor, rows drift up staggered,
+       group dots pop — all first-open only (rp-in gate set in JS). */
+    .rz-seg { transform: scaleX(0); }
+    .rz-seg.agree { transform-origin: left center; }
+    .rz-seg.disagree { transform-origin: right center; }
+    .rz-seg.pass { transform-origin: center center; }
+    .rp-in .rz-seg { transform: scaleX(1); transition: transform 0.55s var(--ease-spring); }
+    .rz-row, .rz-tiles, .rz-legend, .rz-chips { opacity: 0; transform: translateY(8px); }
+    .rp-in .rz-row, .rp-in .rz-tiles, .rp-in .rz-legend, .rp-in .rz-chips {
+      opacity: 1; transform: none;
+      transition: opacity 0.3s var(--ease-swift), transform 0.35s var(--ease-spring);
+    }
+    .rz-dumb .dot { opacity: 0; transform: scale(0.4); }
+    .rp-in .rz-dumb .dot { opacity: 1; transform: scale(1); transition: opacity 0.25s var(--ease-swift), transform 0.45s var(--ease-spring); }
+
+    /* Modal: fade the veil, spring the card */
+    .overlay { display: flex; visibility: hidden; pointer-events: none; opacity: 0;
+      transition: opacity 0.22s var(--ease-swift), visibility 0.22s; }
+    .overlay.open { visibility: visible; pointer-events: auto; opacity: 1; }
+    .modal { transform: translateY(16px) scale(0.98); opacity: 0;
+      transition: transform 0.28s var(--ease-spring), opacity 0.2s var(--ease-swift); }
+    .overlay.open .modal { transform: none; opacity: 1; }
+
+    /* Overlays that already animate get the same easing */
+    .toast { transition: opacity 0.25s var(--ease-swift), transform 0.3s var(--ease-spring); }
+    #screen-note { transition: opacity 0.28s var(--ease-swift), transform 0.32s var(--ease-spring); }
+
+    /* ============ Desktop layout ============ */
+    @media (min-width: 1080px) {
+      .wrap { max-width: 1040px; }
+      /* Landing: topics in two columns; an opened card takes the full row */
+      #topics {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 1rem;
+        align-items: start;
+      }
+      #topics .card { margin-bottom: 0; }
+      #topics .card.expanded { grid-column: 1 / -1; }
+      body.topic-mode #topics { display: block; }
+      /* Full view: voting left, live results right when both are open */
+      body.topic-mode.results-open #topics .card {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        column-gap: 2.6rem;
+      }
+      body.topic-mode.results-open .topic-head,
+      body.topic-mode.results-open .topic-desc,
+      body.topic-mode.results-open .topic-stats,
+      body.topic-mode.results-open .topic-actions { grid-column: 1 / -1; }
+      body.topic-mode.results-open .vote-panel { grid-column: 1; }
+      body.topic-mode.results-open .results-panel {
+        grid-column: 2;
+        grid-row: span 2;
+        border-top: none;
+        border-left: 1px solid rgba(0,0,0,0.07);
+        padding: 0 0 0 2.2rem;
+        margin-top: 0.95rem;
+      }
+    }
+
+    /* Loading skeleton (topic pages) — calm, not a text screen. Pulse uses
+       opacity only (compositor-friendly), no layout/paint churn. */
+    .skel { pointer-events: none; animation: skel-pulse 1.5s ease-in-out infinite; }
+    .skel-line, .skel-pill { background: rgba(0,0,0,0.07); border-radius: 6px; }
+    .skel-line { height: 0.85rem; margin-bottom: 0.7rem; }
+    .skel-line.w90 { width: 90%; } .skel-line.w80 { width: 80%; } .skel-line.w60 { width: 60%; height: 1.2rem; margin-bottom: 1rem; }
+    .skel-row { display: flex; gap: 0.6rem; margin-top: 1.3rem; }
+    .skel-pill { flex: 1; height: 2.4rem; border-radius: 10px; }
+    @keyframes skel-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+
+    /* Pre-paint layout: hide the sections that don't belong on this URL so
+       the correct page renders directly, never home-first-then-reshape. */
+    /* Cross-link to the petitions surface. Deliberately visible in every mode
+       — it is a different kind of civic act, not a sub-view of a topic. */
+    .nav-row {
+      display: flex; align-items: baseline; gap: 0.55rem; flex-wrap: wrap;
+      margin: 0 0 1.5rem; padding: 0.75rem 1.05rem; border-radius: 14px;
+      background: var(--card); border: 1px solid rgba(255,255,255,0.9);
+      box-shadow: 0 1px 4px rgba(26,26,46,0.06); text-decoration: none; color: inherit;
+      transition: transform 0.18s var(--ease-spring), box-shadow 0.18s ease;
+    }
+    .nav-row:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(26,26,46,0.1); }
+    .nav-row b { color: var(--green-dark); font-size: 0.92rem; white-space: nowrap; }
+    .nav-row span { flex: 1 1 14rem; font-size: 0.82rem; line-height: 1.5; color: var(--muted); }
+    .nav-row i { color: var(--green); font-style: normal; font-weight: 700; }
+
+    .boot-topic #topics-heading, .boot-topic #new-topic, .boot-topic #create-card,
+    .boot-topic #activity-view {
+      display: none !important;
+    }
+    .boot-topic #back-home { display: inline-flex !important; }
+    .boot-activity #topics-heading, .boot-activity #topics,
+    .boot-activity #new-topic, .boot-activity #create-card {
+      display: none !important;
+    }
+    .boot-activity #activity-view { display: block !important; }
+
+    /* Accessibility: motion is an enhancement, never a requirement */
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.001s !important;
+        animation-delay: 0s !important;
+        transition-duration: 0.001s !important;
+        transition-delay: 0s !important;
+      }
+    }
   </style>
   <script>
     // Detect OIDC callback from Auth0 and load admin app to process it
@@ -313,23 +705,52 @@
   </script>
 </head>
 <body>
+  <div id="rz-tip"></div>
+  <div id="screen-note"></div>
   <div class="wrap">
+    <div class="utility-bar">
+      <button class="me" id="me-btn" title="Account &amp; notification settings">
+        <span id="me-label">Sign up for updates</span>
+        <span class="dot" id="me-dot">+</span>
+      </button>
+      <div class="my-stats" id="my-stats" style="display:none">
+        <button type="button" class="ms" data-activity="votes" title="Review your votes"><span class="ms-n" id="ms-votes">0</span><span class="ms-l">votes</span></button>
+        <button type="button" class="ms" data-activity="statements" title="See your statements"><span class="ms-n" id="ms-stmts">0</span><span class="ms-l">statements</span></button>
+        <button type="button" class="ms" data-activity="topics" title="Manage your topics"><span class="ms-n" id="ms-topics">0</span><span class="ms-l">topics</span></button>
+      </div>
+    </div>
     <div class="topbar">
       <div class="brand">
         <h1>Croton <em>Community Forum</em></h1>
         <div class="tag">Share perspectives. Find common ground. Shape the village.</div>
       </div>
-      <button class="me" id="me-btn" title="Notification settings">
-        <span id="me-label">Sign up for updates</span>
-        <span class="dot" id="me-dot">+</span>
-      </button>
     </div>
 
-    <h2>Open topics <small>sorted by engagement</small></h2>
+    <a class="nav-row" href="/petitions">
+      <b>&#x1f4dc; Petitions</b>
+      <span>A topic maps what people think, privately. A petition is the other thing &mdash; one
+      statement, signed in public. Print sheets and collect signatures in person too.</span>
+      <i aria-hidden="true">&rarr;</i>
+    </a>
+
+    <a class="btn btn-link" id="back-home" href="/" style="display:none;padding-left:0">&larr; All topics</a>
+
+    <div id="activity-view" style="display:none">
+      <a class="btn btn-link" id="activity-back" href="#" style="padding-left:0">&larr; Back to topics</a>
+      <h2 id="activity-title" style="margin-top:0.6rem">Your activity</h2>
+      <div class="activity-tabs">
+        <button type="button" data-tab="votes">Votes</button>
+        <button type="button" data-tab="statements">Statements</button>
+        <button type="button" data-tab="topics">My topics</button>
+      </div>
+      <div id="activity-body"><p class="muted">Loading…</p></div>
+    </div>
+
+    <h2 id="topics-heading">Open topics <small><button type="button" id="sort-toggle" title="Click to change sorting">sorted by engagement &#x21C5;</button></small></h2>
     <div id="topics"><p class="muted">Loading topics…</p></div>
 
     <h2 id="new-topic">Start a new topic</h2>
-    <div class="card">
+    <div class="card" id="create-card">
       <p class="muted">
         Anyone can open a topic — no login needed. Give it a clear title, a
         little context, and a few starting statements for neighbors to vote on.
@@ -337,17 +758,17 @@
       <form id="create-form" autocomplete="off">
         <label for="f-topic">Topic title</label>
         <input type="text" id="f-topic" maxlength="140" required
-               placeholder="Should the village add a crosswalk at…?">
+               placeholder="Should the farmers market run year-round?">
         <div class="charcount"><span id="cc-topic">0</span>/140</div>
 
         <label for="f-desc">Context <span>(optional)</span></label>
         <textarea id="f-desc" maxlength="600"
-                  placeholder="A little background so neighbors know what this is about."></textarea>
+                  placeholder="Why this, why now? A sentence or two of background helps neighbors vote thoughtfully."></textarea>
 
         <label>Starting statements <span>(optional — short, one idea each)</span></label>
-        <input type="text" class="f-seed" maxlength="140" placeholder='e.g. "The village should…"'>
-        <input type="text" class="f-seed" maxlength="140" style="margin-top:0.5rem" placeholder="Another statement…">
-        <input type="text" class="f-seed" maxlength="140" style="margin-top:0.5rem" placeholder="Another statement…">
+        <input type="text" class="f-seed" maxlength="140" placeholder='A clear position — “The village should keep the market open through winter.”'>
+        <input type="text" class="f-seed" maxlength="140" style="margin-top:0.5rem" placeholder="A different take — even one you disagree with.">
+        <input type="text" class="f-seed" maxlength="140" style="margin-top:0.5rem" placeholder="One more angle — the middle ground, a tradeoff, a condition…">
 
         <!-- honeypot -->
         <div class="hp" aria-hidden="true">
@@ -369,7 +790,18 @@
       Voting is anonymous. Follow a topic to get new statements by email or
       WhatsApp — each topic has its own update group, and you can leave any
       time.<br>
-      <a href="/privacy">Privacy Policy</a> &middot; <a href="/tos">Terms of Service</a>
+      <a href="/petitions">Petitions</a> &middot; <a href="/privacy">Privacy Policy</a> &middot; <a href="/tos">Terms of Service</a>
+
+      <details class="bug-report" id="bug-report">
+        <summary>&#x1f41e; Report a bug</summary>
+        <form id="bug-form">
+          <textarea id="bug-text" maxlength="2000" placeholder="What were you doing, what happened, and what did you expect instead? (e.g. “Tapped Agree on my iPhone — nothing happened.”)"></textarea>
+          <input type="text" id="bug-contact" maxlength="120" placeholder="Email or WhatsApp, if you’d like a reply (optional)">
+          <div class="hp" aria-hidden="true"><input type="text" id="bug-website" tabindex="-1" autocomplete="off"></div>
+          <button type="submit" class="btn btn-outline">Send report</button>
+        </form>
+        <div class="bug-mail">Or email us: <a href="mailto:bpmatt@gmail.com">bpmatt@gmail.com</a></div>
+      </details>
     </div>
   </div>
 
@@ -380,20 +812,22 @@
       <p class="sub">
         Create a lightweight account — just a name and where to reach you.
         When topics you follow get new statements, we'll send them your way so
-        you can vote. No password, and voting stays anonymous.
+        you can vote. No password. Your votes are never shown publicly, but an
+        account does privately link them to your contact details so we never
+        ask you twice — for complete anonymity, vote without one.
       </p>
       <form id="acct-form" autocomplete="on">
-        <label for="a-name">Name <span>(what neighbors may see)</span></label>
-        <input type="text" id="a-name" maxlength="60" placeholder="Your name">
+        <label for="a-name">Name <span>(only used in messages to you)</span></label>
+        <input type="text" id="a-name" maxlength="60" placeholder="First name is plenty — e.g. Maria">
 
-        <div class="fieldlabel">Send updates via</div>
+        <div class="fieldlabel">Send updates via <span>(fill in either or both)</span></div>
         <div class="segmented">
-          <label><input type="radio" name="a-channel" value="email" checked>&#x2709;&#xfe0f; Email</label>
-          <label><input type="radio" name="a-channel" value="whatsapp">&#x1f4f1; WhatsApp</label>
+          <label id="seg-email"><input type="radio" name="a-channel" value="email" checked>&#x2709;&#xfe0f; Email<span class="seg-check">&#x2713;</span></label>
+          <label id="seg-whatsapp"><input type="radio" name="a-channel" value="whatsapp">&#x1f4f1; WhatsApp<span class="seg-check">&#x2713;</span></label>
         </div>
 
         <label for="a-contact" id="a-contact-label">Email address</label>
-        <input type="email" id="a-contact" required placeholder="you@example.com">
+        <input type="email" id="a-contact" placeholder="you@gmail.com">
 
         <div class="check">
           <input type="checkbox" id="a-alltopics">
@@ -402,6 +836,10 @@
 
         <div class="hp" aria-hidden="true">
           <input type="text" id="a-website" tabindex="-1" autocomplete="off">
+        </div>
+
+        <div id="acct-verify" style="display:none;margin-top:0.6rem">
+          <div class="fieldlabel" id="verify-msg" style="font-weight:400;line-height:1.45"></div>
         </div>
 
         <div id="acct-notice" class="notice"></div>
@@ -431,18 +869,59 @@
     }
     function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
 
+    var _xidCache = null; // survives localStorage write failures within a page
     function myXid() {
+      if (_xidCache) return _xidCache;
       var x = lsGet(LS_XID, null);
+      // Only a genuine browser identity is ever usable here — a server-side
+      // synthetic (email:*) or corrupted value must not leak into voting.
+      if (x && !/^web:[0-9a-f-]{36}$/.test(x)) x = null;
       if (!x) {
         x = 'web:' + ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, function (c) {
           return (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16);
         });
         lsSet(LS_XID, x);
       }
+      _xidCache = x;
       return x;
     }
     function account() { return lsGet(LS_ACCOUNT, null); }
     function creatorKeys() { return lsGet(LS_KEYS, {}); }
+
+    // Modern morph for user-triggered layout changes (View Transitions API,
+    // progressive enhancement — plain render everywhere else).
+    function withViewTransition(fn) {
+      if (document.startViewTransition &&
+          !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        document.startViewTransition(fn);
+      } else {
+        fn();
+      }
+    }
+
+    // Eased count-up for stat tiles
+    function countUp(el) {
+      var target = parseInt(el.getAttribute('data-n'), 10) || 0;
+      var t0 = performance.now(), dur = 600;
+      function step(t) {
+        var p = Math.min(1, (t - t0) / dur);
+        el.textContent = Math.round(target * (1 - Math.pow(1 - p, 3)));
+        if (p < 1) requestAnimationFrame(step);
+      }
+      requestAnimationFrame(step);
+    }
+
+    function screenNote(html, kind, ms) {
+      var n = document.getElementById('screen-note');
+      n.className = kind === 'success' ? 'success' : '';
+      n.innerHTML = html;
+      // restart the transition even on back-to-back notes
+      n.classList.remove('show');
+      void n.offsetWidth;
+      n.classList.add('show');
+      clearTimeout(n._h);
+      n._h = setTimeout(function () { n.classList.remove('show'); }, ms || 4200);
+    }
 
     function toast(msg) {
       var t = document.getElementById('toast');
@@ -476,22 +955,249 @@
 
     function refreshMeButton() {
       var a = account();
+      var who = a ? (a.name || a.email || a.whatsapp || a.contact || '?') : null;
       document.getElementById('me-label').textContent =
-        a ? (a.name || a.contact) : 'Sign up for updates';
+        a ? who : 'Sign up for updates';
       document.getElementById('me-dot').textContent =
-        a ? (a.name || a.contact).charAt(0).toUpperCase() : '+';
+        a ? who.charAt(0).toUpperCase() : '+';
       document.getElementById('acct-signout').style.display = a ? '' : 'none';
+      loadMyStats();
+    }
+
+    // Top-right participation stats (signed-in only)
+    function loadMyStats() {
+      var a = account();
+      var el = document.getElementById('my-stats');
+      if (!a) { el.style.display = 'none'; el.classList.remove('show'); return; }
+      api('/public/stats?account=' + encodeURIComponent(a.accountId)).then(function (d) {
+        var first = el.style.display === 'none';
+        el.style.display = 'flex';
+        [['ms-votes', d.votes], ['ms-stmts', d.statements], ['ms-topics', d.topics]].forEach(function (p) {
+          var n = document.getElementById(p[0]);
+          n.setAttribute('data-n', p[1]);
+          if (first) countUp(n); else n.textContent = p[1];
+        });
+        requestAnimationFrame(function () { el.classList.add('show'); });
+      }).catch(function () {});
+    }
+
+    // Optimistic bump so actions feel counted instantly, then reconcile with
+    // the server once its short cache has turned over.
+    var msReconcileTimer = null;
+    function msBump(id) {
+      var n = document.getElementById(id);
+      if (document.getElementById('my-stats').style.display !== 'none') {
+        n.textContent = (parseInt(n.textContent, 10) || 0) + 1;
+      }
+      clearTimeout(msReconcileTimer);
+      msReconcileTimer = setTimeout(loadMyStats, 9000);
+    }
+
+    // ---------- Activity view (Votes / Statements / My topics) ----------
+    var activityData = null;
+    var activityTab = 'votes';
+
+    Array.prototype.forEach.call(document.querySelectorAll('[data-activity]'), function (b) {
+      b.addEventListener('click', function () {
+        var tab = b.getAttribute('data-activity');
+        if (!account()) { openActivity(tab); return; } // no view-transition on modal
+        withViewTransition(function () { openActivity(tab); });
+      });
+    });
+    document.getElementById('activity-back').addEventListener('click', function (e) {
+      e.preventDefault();
+      withViewTransition(closeActivity);
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('.activity-tabs button'), function (b) {
+      b.addEventListener('click', function () {
+        if (b.getAttribute('data-tab') === activityTab) return;
+        activityTab = b.getAttribute('data-tab');
+        withViewTransition(renderActivity);
+      });
+    });
+
+    function openActivity(tab) {
+      var a = account();
+      if (!a) { overlay.classList.add('open'); return; }
+      // Opens in place from anywhere — home OR a topic page — no navigation,
+      // no flash. closeActivity restores whichever mode we came from.
+      document.documentElement.classList.remove('boot-activity', 'boot-topic');
+      activityTab = tab || 'votes';
+      document.getElementById('activity-view').style.display = '';
+      document.getElementById('topics-heading').style.display = 'none';
+      document.getElementById('topics').style.display = 'none';
+      document.getElementById('activity-body').innerHTML = '<p class="muted">Loading&hellip;</p>';
+      renderActivityTabs();
+      window.scrollTo({ top: 0, behavior: 'auto' });
+      api('/public/my-activity?account=' + encodeURIComponent(a.accountId)).then(function (d) {
+        activityData = d;
+        renderActivity();
+      }).catch(function () {
+        document.getElementById('activity-body').innerHTML = '<p class="act-empty">Couldn’t load your activity — try again shortly.</p>';
+      });
+    }
+
+    function closeActivity() {
+      document.getElementById('activity-view').style.display = 'none';
+      document.getElementById('topics').style.display = '';
+      if (TOPIC_MODE) {
+        // Return to the single-topic view we were on
+        document.getElementById('topics-heading').style.display = 'none';
+        document.getElementById('new-topic').style.display = 'none';
+        document.getElementById('create-card').style.display = 'none';
+        document.getElementById('back-home').style.display = '';
+      } else {
+        document.getElementById('topics-heading').style.display = '';
+        document.getElementById('new-topic').style.display = '';
+        document.getElementById('create-card').style.display = '';
+      }
+    }
+
+    function renderActivityTabs() {
+      Array.prototype.forEach.call(document.querySelectorAll('.activity-tabs button'), function (b) {
+        b.classList.toggle('active', b.getAttribute('data-tab') === activityTab);
+      });
+      // The create form lives on the "My topics" tab only
+      var onTopics = activityTab === 'topics';
+      document.getElementById('new-topic').style.display = onTopics ? '' : 'none';
+      document.getElementById('create-card').style.display = onTopics ? '' : 'none';
+    }
+
+    function renderActivity() {
+      renderActivityTabs();
+      var body = document.getElementById('activity-body');
+      var d = activityData || { votes: [], statements: [], topics: [] };
+      if (activityTab === 'votes') {
+        document.getElementById('activity-title').textContent = 'Your votes';
+        if (!d.votes.length) { body.innerHTML = '<p class="act-empty">You haven’t voted yet. Pick a topic and weigh in!</p>'; return; }
+        body.innerHTML = d.votes.map(function (v) {
+          return '<div class="act-group"><h3><a href="/' + esc(v.slug || v.zinvite) + '">' + esc(v.topic) + '</a>' +
+            '<span class="count">' + v.count + ' vote' + (v.count === 1 ? '' : 's') + '</span></h3>' +
+            '<div class="act-sub">Tap a choice to change your vote.</div>' +
+            '<div id="actrv-' + v.zinvite + '"><p class="muted" style="font-size:0.85rem">Loading your votes&hellip;</p></div></div>';
+        }).join('');
+        d.votes.forEach(function (v) { loadActivityReview(v.zinvite); });
+      } else if (activityTab === 'statements') {
+        document.getElementById('activity-title').textContent = 'Your statements';
+        var totalStmts = d.statements.reduce(function (n, s) { return n + s.items.length; }, 0);
+        if (!totalStmts) { body.innerHTML = '<p class="act-empty">You haven’t written any statements yet. Add one from any topic.</p>'; return; }
+        body.innerHTML = d.statements.map(function (s) {
+          return '<div class="act-group"><h3><a href="/' + esc(s.slug || s.zinvite) + '">' + esc(s.topic) + '</a>' +
+            '<span class="count">' + s.items.length + ' statement' + (s.items.length === 1 ? '' : 's') + '</span></h3>' +
+            s.items.map(function (c) {
+              var ag = c.total ? Math.round(c.agree / c.total * 100) : 0;
+              var dg = c.total ? Math.round(c.disagree / c.total * 100) : 0;
+              var stats = c.total
+                ? '<div class="act-stmt-stats">' +
+                    '<span class="act-stmt-pct"><b>' + ag + '%</b> agree</span>' +
+                    '<span class="act-stmt-bar"><i style="width:' + ag + '%;background:var(--rz-agree)"></i></span>' +
+                    '<span class="act-stmt-meta">' + dg + '% disagree &middot; ' + c.total + ' vote' + (c.total === 1 ? '' : 's') +
+                    (c.pass ? ' &middot; ' + c.pass + ' pass' : '') + '</span></div>'
+                : '<div class="act-stmt-meta" style="margin-top:0.3rem">No votes yet — it’s live for neighbors to weigh in.</div>';
+              return '<div class="act-stmt"><div class="act-stmt-txt">&ldquo;' + esc(c.txt) + '&rdquo;</div>' + stats + '</div>';
+            }).join('') + '</div>';
+        }).join('');
+      } else {
+        document.getElementById('activity-title').textContent = 'My topics';
+        if (!d.topics.length) { body.innerHTML = '<p class="act-empty">You haven’t created any topics yet. Start one below the list!</p>'; return; }
+        body.innerHTML = d.topics.map(function (t) {
+          var when = new Date(t.created);
+          var right = t.removable
+            ? '<button class="act-remove" data-remove="' + esc(t.zinvite) + '">Remove</button>'
+            : '<div class="act-locked">' + t.othersVotes + ' neighbor vote' + (t.othersVotes === 1 ? '' : 's') + ' &middot; can’t remove</div>';
+          return '<div class="act-group"><div class="act-topic-row"><div><div class="name"><a href="/' + esc(t.slug || t.zinvite) + '">' + esc(t.topic) + '</a></div>' +
+            '<div class="meta">Opened ' + when.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + '</div></div>' + right + '</div></div>';
+        }).join('');
+        Array.prototype.forEach.call(body.querySelectorAll('[data-remove]'), function (b) {
+          b.addEventListener('click', function () { removeTopic(b.getAttribute('data-remove')); });
+        });
+      }
+    }
+
+    // Reuse the review-and-change machinery inside the activity votes tab.
+    function loadActivityReview(z) {
+      var el = document.getElementById('actrv-' + z);
+      Promise.all([
+        fetch('/api/v3/participationInit?conversation_id=' + encodeURIComponent(z) + '&xid=' + encodeURIComponent(myXid()))
+          .then(function (r) { if (!r.ok) throw 0; return r.json(); }),
+        fetch('/api/v3/comments?conversation_id=' + encodeURIComponent(z))
+          .then(function (r) { if (!r.ok) throw 0; return r.json(); })
+      ]).then(function (res) {
+        var votes = {};
+        (res[0].votes || []).forEach(function (v) { votes[v.tid] = v.vote; });
+        var token = (res[0].auth && res[0].auth.token) || tokens()[z];
+        var comments = Array.isArray(res[1]) ? res[1] : [];
+        actReviews[z] = { votes: votes, comments: comments, token: token };
+        renderActivityReview(z);
+      }).catch(function () {
+        if (el) el.innerHTML = '<p class="muted" style="font-size:0.85rem">Couldn’t load these votes.</p>';
+      });
+    }
+    var actReviews = {};
+    function renderActivityReview(z) {
+      var el = document.getElementById('actrv-' + z);
+      var p = actReviews[z];
+      if (!el || !p) return;
+      var rows = p.comments.filter(function (c) { return p.votes[c.tid] !== undefined; });
+      if (!rows.length) { el.innerHTML = '<p class="muted" style="font-size:0.85rem">No votes here yet.</p>'; return; }
+      el.innerHTML = rows.map(function (c) {
+        var cur = p.votes[c.tid];
+        function b(v, label) {
+          return '<button class="rv-btn' + (cur === v ? ' active-' + v : '') +
+            '" data-acv-z="' + z + '" data-acv-tid="' + c.tid + '" data-acv-v="' + v + '">' + label + '</button>';
+        }
+        return '<div class="rv-row"><div class="rv-txt">' + esc(c.txt) + '</div>' +
+          '<div class="rv-btns">' + b(-1, '&#x1f44d;') + b(1, '&#x1f44e;') + b(0, 'Pass') + '</div></div>';
+      }).join('');
+      Array.prototype.forEach.call(el.querySelectorAll('[data-acv-tid]'), function (btn) {
+        btn.addEventListener('click', function () {
+          activityChangeVote(z, parseInt(btn.getAttribute('data-acv-tid'), 10), parseInt(btn.getAttribute('data-acv-v'), 10));
+        });
+      });
+    }
+    function activityChangeVote(z, tid, v) {
+      var p = actReviews[z];
+      if (!p || p.votes[tid] === v) return;
+      fetch('/api/v3/votes', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + p.token },
+        body: JSON.stringify({ conversation_id: z, tid: tid, vote: v })
+      }).then(function (r) { if (!r.ok) throw 0; p.votes[tid] = v; renderActivityReview(z); toast('Vote updated.'); })
+        .catch(function () { toast('That change didn’t go through — try again.'); });
+    }
+
+    function removeTopic(z) {
+      if (!confirm('Remove this topic? It will be taken down from the forum.')) return;
+      var a = account();
+      api('/public/topic-remove', { accountId: a.accountId, zinvite: z }).then(function () {
+        activityData.topics = activityData.topics.filter(function (t) { return t.zinvite !== z; });
+        renderActivity();
+        var tn = document.getElementById('ms-topics');
+        tn.textContent = Math.max(0, (parseInt(tn.textContent, 10) || 0) - 1);
+        screenNote('&#x1f5d1;&#xfe0f; <b>Topic removed.</b>', 'success', 3000);
+        loadTopics();
+      }).catch(function (err) { toast(err.message); });
     }
 
     document.getElementById('me-btn').addEventListener('click', function () {
       var a = account();
+      var pendingClaim = !a && lsGet(LS_CLAIM, null);
+      if (pendingClaim) { showVerifyUI(pendingClaim.channels || pendingClaim.channel); startClaimPoll(); }
       if (a) {
         document.getElementById('a-name').value = a.name || '';
-        document.getElementById('a-contact').value = a.contact || '';
+        contactVals.email = a.email || (a.channel === 'email' ? a.contact : '') || '';
+        contactVals.whatsapp = a.whatsapp || (a.channel === 'whatsapp' ? a.contact : '') || '';
+        var primary = 'email';
+        if (contactVals.whatsapp && (!contactVals.email || a.channel === 'whatsapp')) primary = 'whatsapp';
         var radios = document.getElementsByName('a-channel');
-        for (var i = 0; i < radios.length; i++) radios[i].checked = radios[i].value === (a.channel || 'email');
-        document.getElementById('a-alltopics').checked = !!a.allTopics;
+        for (var i = 0; i < radios.length; i++) radios[i].checked = radios[i].value === primary;
+        shownChannel = primary;
         syncChannelUI();
+        document.getElementById('a-alltopics').checked = !!a.allTopics;
+      } else {
+        contactVals = { email: '', whatsapp: '' };
+        shownChannel = document.querySelector('input[name="a-channel"]:checked').value;
+        document.getElementById('a-contact').value = '';
+        refreshSegChecks();
       }
       overlay.classList.add('open');
     });
@@ -509,10 +1215,26 @@
       toast('Signed out on this device.');
     });
 
+
+    // Compact channel UI: the segmented control switches which contact the
+    // single field is editing; both values persist behind it, and a ✓ lights
+    // up on any channel that's filled in. Filling both = updates on both.
+    var contactVals = { email: '', whatsapp: '' };
+    var shownChannel = 'email';
+
+    function refreshSegChecks() {
+      document.getElementById('seg-email').classList.toggle('has-val', !!contactVals.email.trim());
+      document.getElementById('seg-whatsapp').classList.toggle('has-val', !!contactVals.whatsapp.trim());
+    }
+
+    // Render-only: reflects the checked channel + banked values. Banking the
+    // in-progress edit happens ONLY on a real channel switch — never here, or
+    // programmatic prefill gets clobbered by stale field contents.
     function syncChannelUI() {
       var ch = document.querySelector('input[name="a-channel"]:checked').value;
       var label = document.getElementById('a-contact-label');
       var input = document.getElementById('a-contact');
+      shownChannel = ch;
       if (ch === 'whatsapp') {
         label.textContent = 'WhatsApp number';
         input.type = 'tel';
@@ -522,36 +1244,157 @@
         input.type = 'email';
         input.placeholder = 'you@example.com';
       }
+      input.value = contactVals[ch];
+      refreshSegChecks();
     }
     Array.prototype.forEach.call(document.getElementsByName('a-channel'), function (r) {
-      r.addEventListener('change', syncChannelUI);
+      r.addEventListener('change', function () {
+        // Bank what was being edited under the channel it belonged to,
+        // THEN switch the view.
+        contactVals[shownChannel] = document.getElementById('a-contact').value;
+        syncChannelUI();
+      });
     });
+    document.getElementById('a-contact').addEventListener('input', function () {
+      contactVals[shownChannel] = this.value;
+      refreshSegChecks();
+    });
+
+    // Reconcile this browser's voting identity with the account's.
+    // Durability rules: a synthetic server identity (email:*) never replaces
+    // this browser's real one — instead the browser claims the account; a
+    // real server identity (another device's, or a phone anchor) is adopted.
+    function syncXid(d) {
+      var local = lsGet(LS_XID, null);
+      var synthetic = d.xid && d.xid.indexOf('email:') === 0;
+      if (d.xid && !synthetic && d.xid !== local) {
+        lsSet(LS_XID, d.xid);
+        _xidCache = d.xid;
+        // The old identity's session tokens point at the wrong participant —
+        // drop them so every page re-establishes as the corrected identity.
+        lsSet(LS_TOKENS, {});
+        try {
+          for (var i = localStorage.length - 1; i >= 0; i--) {
+            var k = localStorage.key(i);
+            if (k && k.indexOf('participant_token_') === 0) localStorage.removeItem(k);
+          }
+        } catch (e) {}
+        loadTopics();
+        return;
+      }
+      if ((!d.xid || synthetic) && local && /^web:/.test(local) && d.accountId) {
+        api('/public/account-xid', { accountId: d.accountId, xid: local })
+          .catch(function () {});
+      }
+    }
+
+    // ---------- Signup verification (clickthrough link, email or WhatsApp) ----
+    var LS_CLAIM = 'ccf-claim';
+    var claimTimer = null;
+
+    function adoptAccount(d, noteHtml) {
+      lsSet(LS_ACCOUNT, {
+        accountId: d.accountId,
+        name: d.name,
+        channel: d.channel,
+        contact: d.contact,
+        email: d.email || null,
+        whatsapp: d.whatsapp || null,
+        allTopics: d.allTopics,
+        subs: d.subs || []
+      });
+      syncXid(d);
+      lsSet(LS_CLAIM, null);
+      stopClaimPoll();
+      hideVerifyUI();
+      refreshMeButton();
+      overlay.classList.remove('open');
+      screenNote(noteHtml || '&#x2705; <b>Successfully subscribed!</b> Updates will reach you there.', 'success', 4500);
+      loadTopics();
+    }
+
+    function showVerifyUI(channels) {
+      var list = Array.isArray(channels) ? channels : [channels];
+      var both = list.length > 1;
+      document.getElementById('acct-verify').style.display = '';
+      document.getElementById('verify-msg').innerHTML = both
+        ? '&#x2709;&#xfe0f;&#x1f4f1; Almost done &mdash; we sent confirmation links to your email <i>and</i> your WhatsApp. Tap each to activate that channel; this window finishes after the first one.'
+        : (list[0] === 'whatsapp'
+          ? '&#x1f4f1; Almost done &mdash; we sent a confirmation link to your WhatsApp. Tap it, and this window will finish on its own.'
+          : '&#x1f4e7; Almost done &mdash; we emailed you a confirmation link. Click it, and this window will finish on its own.');
+    }
+    function hideVerifyUI() {
+      document.getElementById('acct-verify').style.display = 'none';
+    }
+
+    function stopClaimPoll() {
+      if (claimTimer) { clearInterval(claimTimer); claimTimer = null; }
+    }
+    function startClaimPoll() {
+      stopClaimPoll();
+      var c = lsGet(LS_CLAIM, null);
+      if (!c || !c.claimId) return;
+      claimTimer = setInterval(function () {
+        api('/public/claim?claim=' + encodeURIComponent(c.claimId))
+          .then(function (d) {
+            if (d.pending) return;
+            if (d.foreign) {
+              // Verified, but this browser isn't provably that person. If the
+              // link was tapped on THIS device, the cookie signs us in.
+              lsSet(LS_CLAIM, null);
+              stopClaimPoll();
+              hideVerifyUI();
+              api('/public/me').then(function (me) {
+                adoptAccount(me, '&#x2705; <b>Signed in.</b> Welcome back!');
+              }).catch(function () {
+                screenNote('&#x2705; Confirmed. To sign in on this device, open the confirmation link here — or from any device you want signed in.', 'success', 7000);
+              });
+              return;
+            }
+            adoptAccount(d);
+          })
+          .catch(function () {
+            // claim expired or consumed elsewhere — stop quietly
+            lsSet(LS_CLAIM, null);
+            stopClaimPoll();
+          });
+      }, 4000);
+    }
 
     document.getElementById('acct-form').addEventListener('submit', function (e) {
       e.preventDefault();
       var notice = document.getElementById('acct-notice');
       notice.className = 'notice';
+      notice.textContent = '';
+      contactVals[shownChannel] = document.getElementById('a-contact').value; // bank current edit
       var payload = {
         previousAccountId: (account() || {}).accountId,
         name: document.getElementById('a-name').value,
-        channel: document.querySelector('input[name="a-channel"]:checked').value,
-        contact: document.getElementById('a-contact').value,
+        email: contactVals.email.trim(),
+        whatsapp: contactVals.whatsapp.trim(),
         allTopics: document.getElementById('a-alltopics').checked,
+        xid: myXid(), // ties this browser's votes to the account identity
         website: document.getElementById('a-website').value
       };
+      if (!payload.email && !payload.whatsapp) {
+        notice.className = 'notice error';
+        notice.textContent = 'Enter an email address or WhatsApp number.';
+        return;
+      }
       api('/public/account', payload).then(function (d) {
-        lsSet(LS_ACCOUNT, {
-          accountId: d.accountId,
-          name: d.name || payload.name,
-          channel: payload.channel,
-          contact: payload.contact,
-          allTopics: d.allTopics,
-          subs: d.subs || []
-        });
-        refreshMeButton();
-        overlay.classList.remove('open');
-        toast('You’re set up! Follow a topic to get its updates.');
-        loadTopics();
+        if (d.pending) {
+          lsSet(LS_CLAIM, { claimId: d.claimId, channels: d.channels || [d.channel], ts: Date.now() });
+          overlay.classList.remove('open');
+          var chs = d.channels || [d.channel];
+          var where = chs.length > 1 ? 'your email <i>and</i> WhatsApp'
+            : (chs[0] === 'whatsapp' ? 'your WhatsApp' : 'your inbox');
+          screenNote(d.updated
+            ? '&#x2705; <b>Saved.</b> One more step for your new contact — tap the link we sent to ' + where + '.'
+            : '&#x2709;&#xfe0f; <b>One more step</b> — we sent a confirmation link to ' + where + '. Tap it to finish subscribing.', '', 7000);
+          startClaimPoll();
+          return;
+        }
+        adoptAccount(d, '&#x2705; <b>Saved.</b>'); // change-aware save: nothing new to confirm
       }).catch(function (err) {
         notice.className = 'notice error';
         notice.textContent = err.message;
@@ -576,7 +1419,6 @@
 
     function statLine(t) {
       return '<div class="topic-stats">' +
-        '<span><b>' + (t.participant_count || 0) + '</b> participant' + (t.participant_count === 1 ? '' : 's') + '</span>' +
         '<span><b>' + (t.statement_count || 0) + '</b> statement' + (t.statement_count === 1 ? '' : 's') + '</span>' +
         '<span><b>' + (t.followers || 0) + '</b> following</span>' +
         '</div>';
@@ -591,29 +1433,46 @@
       var keys = creatorKeys();
       var a = account();
       var mySubs = (a && a.subs) || [];
+      var visible = TOPIC_MODE
+        ? topicsData.filter(function (t) { return t.zinvite === TOPIC_MODE; })
+        : topicsData.slice();
+      if (!TOPIC_MODE && sortMode === 'recent') {
+        visible.sort(function (a, b) { return (b.created || 0) - (a.created || 0); });
+      }
 
-      el.innerHTML = topicsData.map(function (t) {
+      el.innerHTML = visible.map(function (t) {
         var mine = !!keys[t.zinvite];
         var following = mySubs.indexOf(t.zinvite) !== -1;
         var open = !!openPanels[t.zinvite];
-        return '<div class="card" id="card-' + esc(t.zinvite) + '">' +
+        var expanded = open || !!openResults[t.zinvite];
+        return '<div class="card' + (expanded ? ' expanded' : '') + '" id="card-' + esc(t.zinvite) + '">' +
           '<div class="topic-head">' +
             '<div>' +
-              '<div class="topic-title">' + esc(t.topic) + (mine ? ' <span class="pill">yours</span>' : '') + '</div>' +
+              '<div class="topic-title">' +
+                (TOPIC_MODE ? esc(t.topic) : '<a href="/' + esc(t.slug || t.zinvite) + '">' + esc(t.topic) + '</a>') +
+                (mine ? ' <span class="pill">yours</span>' : '') + '</div>' +
               (t.description ? '<div class="topic-desc">' + esc(t.description) + '</div>' : '') +
               statLine(t) +
             '</div>' +
+            (TOPIC_MODE ? '' : '<a class="topic-open" href="/' + esc(t.slug || t.zinvite) + '" title="Open this topic\'s page" aria-label="Open topic page">' +
+              '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M3.5 10.5 L10.5 3.5 M5 3.5 H10.5 V9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></a>') +
           '</div>' +
           '<div class="topic-actions">' +
             '<button class="btn btn-primary" data-vote="' + esc(t.zinvite) + '">' + (open ? 'Hide voting' : 'Vote') + '</button>' +
+            '<button class="btn btn-outline' + (openResults[t.zinvite] ? ' following' : '') + '" data-results="' + esc(t.zinvite) + '">' +
+              (openResults[t.zinvite] ? 'Hide results' : 'Results') + '</button>' +
             '<button class="btn btn-outline' + (following ? ' following' : '') + '" data-follow="' + esc(t.zinvite) + '">' +
               (following ? '&#x2713; Following' : 'Follow') + '</button>' +
-            '<a class="btn btn-link" href="/' + esc(t.slug || t.zinvite) + '">Full view &rarr;</a>' +
             (mine ? '<button class="btn btn-quiet" data-close="' + esc(t.zinvite) + '">Close topic</button>' : '') +
           '</div>' +
           '<div class="vote-panel" id="vp-' + esc(t.zinvite) + '" style="display:' + (open ? 'block' : 'none') + '"></div>' +
+          '<div class="results-panel" id="rp-' + esc(t.zinvite) + '"></div>' +
         '</div>';
       }).join('');
+
+      el.querySelectorAll('[data-results]').forEach(function (b) {
+        b.addEventListener('click', function () { toggleResults(b.getAttribute('data-results')); });
+      });
 
       el.querySelectorAll('[data-vote]').forEach(function (b) {
         b.addEventListener('click', function () { toggleVote(b.getAttribute('data-vote')); });
@@ -627,34 +1486,445 @@
 
       // Re-render any open vote panels
       Object.keys(openPanels).forEach(function (z) { drawVotePanel(z); });
+      // Re-render any open results panels
+      Object.keys(openResults).forEach(function (z) { drawResultsPanel(z); });
     }
 
-    function loadTopics() {
+    // Topic mode: /<slug> serves this same page focused on one topic — the
+    // full view IS the landing experience, just zoomed in.
+    var TOPIC_MODE = null;
+    // Mode decided synchronously in <head> before first paint (no flash).
+    var topicModePath = window.__TOPIC_SLUG || '';
+    // On a topic URL, show a calm skeleton immediately (not "Loading topics…")
+    // so the wait reads as "this topic is loading", then content fades in.
+    if (topicModePath) {
+      var tel = document.getElementById('topics');
+      if (tel) tel.innerHTML =
+        '<div class="card skel"><div class="skel-line w60"></div>' +
+        '<div class="skel-line w90"></div><div class="skel-line w80"></div>' +
+        '<div class="skel-row"><div class="skel-pill"></div><div class="skel-pill"></div><div class="skel-pill"></div></div></div>';
+    }
+
+    // Share bar for topic pages — plain links and the clipboard, nothing
+    // third-party loads on this site.
+    var SVG_ICONS = {
+      link: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M6.5 9.5 L9.5 6.5 M7 4.5 L8.5 3 a2.5 2.5 0 0 1 3.5 3.5 L10.5 8 M9 11.5 L7.5 13 a2.5 2.5 0 0 1 -3.5 -3.5 L5.5 8"/></svg>',
+      share: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 10 V2 M5 4.5 L8 1.5 L11 4.5 M3 8 v5 a1 1 0 0 0 1 1 h8 a1 1 0 0 0 1-1 V8"/></svg>',
+      wa: '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm0 18.2a8.2 8.2 0 0 1-4.2-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2Zm4.6-6.1c-.3-.1-1.5-.7-1.7-.8s-.4-.1-.6.1-.7.8-.8 1-.3.2-.6.1a6.7 6.7 0 0 1-3.3-2.9c-.2-.4.2-.4.7-1.3.1-.2 0-.4 0-.5l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 2.9 2.9 0 0 0-.9 2.1 5 5 0 0 0 1 2.7 11.4 11.4 0 0 0 4.4 3.9 5 5 0 0 0 3 .9 2.6 2.6 0 0 0 1.7-1.2 2.1 2.1 0 0 0 .2-1.2c-.1-.1-.3-.2-.6-.3Z"/></svg>',
+      fb: '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M13.5 21v-7h2.4l.4-3h-2.8V9.1c0-.9.2-1.5 1.5-1.5h1.4V4.9c-.3 0-1.1-.1-2.1-.1a3.3 3.3 0 0 0-3.6 3.7V11H8.3v3h2.4v7Z"/></svg>',
+      x: '<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M17.7 3H21l-7.4 8.4L22.2 21h-6.8l-5.3-6.4L4 21H.7l7.9-9L.3 3h7l4.8 5.8Zm-1.2 16h1.9L6.6 4.9H4.6Z"/></svg>',
+      nd: '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3a7.5 7.5 0 0 0-7.3 5.6H3v3.9h2.1A7.5 7.5 0 0 0 12 21a7.5 7.5 0 0 0 7.5-7.5V9a5.9 5.9 0 0 0-11.2-2.6A7.6 7.6 0 0 0 12 3Zm3.9 10.5a3.9 3.9 0 1 1-7.8 0V9.7a2.3 2.3 0 0 1 4.6 0v3.8h3.2Z" opacity="0.9"/></svg>',
+      mail: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><rect x="1.5" y="3" width="13" height="10" rx="1.5"/><path d="M2 4 L8 9 L14 4"/></svg>'
+    };
+
+    function buildShareBar(t, hintMain, hintSub) {
+      var url = location.origin + '/' + (t.slug || t.zinvite);
+      var text = t.topic + ' — add your voice on the Croton Community Forum';
+      var bar = document.createElement('div');
+      bar.className = 'share-bar';
+      bar.innerHTML =
+        '<span class="share-hint">' + hintMain +
+          '<small>' + hintSub + '</small></span>' +
+        '<div class="share-btns">' +
+        (navigator.share ? '<button class="share-btn" id="share-native" title="Share…" aria-label="Share">' + SVG_ICONS.share + '</button>' : '') +
+        '<button class="share-btn" id="share-copy" title="Copy link" aria-label="Copy link">' + SVG_ICONS.link + '</button>' +
+        '<a class="share-btn" target="_blank" rel="noopener" title="Share on WhatsApp" aria-label="WhatsApp" href="https://wa.me/?text=' + encodeURIComponent(text + '\n' + url) + '">' + SVG_ICONS.wa + '</a>' +
+        '<a class="share-btn" target="_blank" rel="noopener" title="Share on Facebook" aria-label="Facebook" href="https://www.facebook.com/sharer/sharer.php?u=' + encodeURIComponent(url) + '">' + SVG_ICONS.fb + '</a>' +
+        '<a class="share-btn" target="_blank" rel="noopener" title="Share on Nextdoor" aria-label="Nextdoor" href="https://nextdoor.com/sharekit/?body=' + encodeURIComponent(text + ' ' + url) + '">' + SVG_ICONS.nd + '</a>' +
+        '<a class="share-btn" target="_blank" rel="noopener" title="Share on X" aria-label="X" href="https://twitter.com/intent/tweet?text=' + encodeURIComponent(text) + '&url=' + encodeURIComponent(url) + '">' + SVG_ICONS.x + '</a>' +
+        '<a class="share-btn" title="Share by email" aria-label="Email" href="mailto:?subject=' + encodeURIComponent(t.topic) + '&body=' + encodeURIComponent(text + '\n\n' + url) + '">' + SVG_ICONS.mail + '</a>' +
+        '</div>';
+      var nat = bar.querySelector('#share-native');
+      if (nat) nat.addEventListener('click', function () {
+        navigator.share({ title: t.topic, text: text, url: url }).catch(function () {});
+      });
+      bar.querySelector('#share-copy').addEventListener('click', function () {
+        (navigator.clipboard ? navigator.clipboard.writeText(url) : Promise.reject())
+          .then(function () { screenNote('&#x1f517; <b>Link copied!</b> Paste it anywhere neighbors gather.', 'success', 3500); })
+          .catch(function () { window.prompt('Copy this link:', url); });
+      });
+      return bar;
+    }
+
+    function renderShareBar(t) {
+      var bar = buildShareBar(t,
+        'Know neighbors with opinions on this?',
+        'Share the topic — anyone can vote in seconds, no account needed.');
+      document.getElementById('topics').insertAdjacentElement('afterend', bar);
+    }
+
+    function enterTopicMode(t) {
+      TOPIC_MODE = t.zinvite;
+      document.documentElement.classList.remove('boot-topic'); // JS owns layout now
+      document.title = t.topic + ' — Croton Community Forum';
+      renderShareBar(t);
+      document.getElementById('back-home').style.display = '';
+      document.getElementById('topics-heading').style.display = 'none';
+      document.getElementById('new-topic').style.display = 'none';
+      document.getElementById('create-card').style.display = 'none';
+      // Identity never belongs in a shareable address bar
+      if (location.search) history.replaceState({}, '', location.pathname);
+      document.body.classList.add('topic-mode');
+      // Voting front and center; results stay a click away (or /slug#results)
+      if (!openPanels[t.zinvite]) toggleVote(t.zinvite);
+      if (location.hash === '#results' && !openResults[t.zinvite]) toggleResults(t.zinvite);
+    }
+
+    // Topic sort: server order = engagement; 'recent' = newest first
+    var sortMode = lsGet('ccf-sort', 'engagement');
+    document.getElementById('sort-toggle').addEventListener('click', function () {
+      sortMode = sortMode === 'engagement' ? 'recent' : 'engagement';
+      lsSet('ccf-sort', sortMode);
+      this.innerHTML = (sortMode === 'recent' ? 'sorted by newest' : 'sorted by engagement') + ' &#x21C5;';
+      withViewTransition(renderTopics);
+    });
+    if (sortMode === 'recent') {
+      document.getElementById('sort-toggle').innerHTML = 'sorted by newest &#x21C5;';
+    }
+
+    var rzDeepLinked = false;
+    var activityOpened = false;
+    function loadTopics(attempt) {
+      attempt = attempt || 0;
       return api('/public/topics').then(function (d) {
         topicsData = d;
+        if (topicModePath && !TOPIC_MODE) {
+          var tm = d.find(function (t) { return t.slug === topicModePath || t.zinvite === topicModePath; });
+          if (tm) { enterTopicMode(tm); return; }
+          location.replace('/'); // closed or unknown topic
+          return;
+        }
         renderTopics();
+        // Deep link: /#results opens the first topic's live results
+        if (!rzDeepLinked && location.hash === '#results' && d.length) {
+          rzDeepLinked = true;
+          if (!openResults[d[0].zinvite]) toggleResults(d[0].zinvite);
+        }
+        // ?view=<tab> — activity view (decided pre-paint via boot-activity)
+        if (!rzDeepLinked && !activityOpened && window.__ACTIVITY_VIEW) {
+          activityOpened = true;
+          history.replaceState({}, '', location.pathname);
+          if (account()) {
+            openActivity(window.__ACTIVITY_VIEW);
+          } else {
+            // Not signed in — drop the boot layout back to the normal home
+            document.documentElement.classList.remove('boot-activity');
+          }
+        }
       }).catch(function () {
-        document.getElementById('topics').innerHTML =
-          '<p class="muted">Couldn&rsquo;t load topics — please refresh.</p>';
+        // Transient failures (aborted requests from fast navigation, brief
+        // network blips) shouldn't dead-end the page — retry a couple times,
+        // then offer a one-tap retry instead of forcing a manual refresh.
+        if (attempt < 2) {
+          return new Promise(function (r) { setTimeout(r, 500 * (attempt + 1)); })
+            .then(function () { return loadTopics(attempt + 1); });
+        }
+        var host = document.getElementById('topics');
+        host.innerHTML = '<p class="muted">Couldn&rsquo;t load topics right now. ' +
+          '<button type="button" id="retry-topics" class="btn btn-link" style="padding:0">Try again</button></p>';
+        var rb = document.getElementById('retry-topics');
+        if (rb) rb.addEventListener('click', function () {
+          host.innerHTML = '<p class="muted">Loading&hellip;</p>';
+          loadTopics();
+        });
       });
     }
 
     // ---------- Follow / unfollow ----------
+    // Follow is optimistic: the button flips instantly, the server syncs in
+    // the background. Rapid clicks just move a "desired" target; only one
+    // request runs at a time and it reconciles to your last click, so the
+    // toggles can never race into an inconsistent state.
+    var followDesired = {}; // z -> target boolean
+    var followBusy = {};    // z -> request in flight
+
+    function updateFollowBtn(z) {
+      var a = account();
+      var on = !!(a && (a.subs || []).indexOf(z) !== -1);
+      Array.prototype.forEach.call(document.querySelectorAll('[data-follow="' + z + '"]'), function (b) {
+        b.classList.toggle('following', on);
+        b.innerHTML = on ? '&#x2713; Following' : 'Follow';
+      });
+    }
+
     function toggleFollow(z) {
       requireAccount().then(function (a) {
-        var following = (a.subs || []).indexOf(z) !== -1;
-        return api(following ? '/public/unsubscribe' : '/public/subscribe',
-                   { accountId: a.accountId, zinvite: z })
-          .then(function (d) {
-            a.subs = d.subs || [];
-            lsSet(LS_ACCOUNT, a);
-            toast(following
-              ? 'Unfollowed — no more updates for that topic.'
-              : 'Following! New statements will reach you by ' + (a.channel === 'whatsapp' ? 'WhatsApp' : 'email') + '.');
-            loadTopics();
-          });
+        var cur = (a.subs || []).indexOf(z) !== -1;
+        var desired = (followDesired[z] !== undefined) ? !followDesired[z] : !cur;
+        followDesired[z] = desired;
+        // Optimistic local state + instant button flip (no full re-render, so
+        // open vote panels stay put)
+        a.subs = (a.subs || []).filter(function (s) { return s !== z; });
+        if (desired) a.subs.push(z);
+        lsSet(LS_ACCOUNT, a);
+        updateFollowBtn(z);
+        flushFollow(z);
       }).catch(function (err) {
         if (err.message !== 'cancelled') toast(err.message);
+      });
+    }
+
+    function flushFollow(z) {
+      if (followBusy[z] || followDesired[z] === undefined) return;
+      var a = account();
+      if (!a) return;
+      var target = followDesired[z];
+      followBusy[z] = true;
+      api(target ? '/public/subscribe' : '/public/unsubscribe',
+          { accountId: a.accountId, zinvite: z })
+        .then(function (d) {
+          var acc = account();
+          acc.subs = d.subs || [];
+          lsSet(LS_ACCOUNT, acc);
+        })
+        .catch(function () { /* keep optimistic state; reconcile below */ })
+        .then(function () {
+          followBusy[z] = false;
+          var acc = account();
+          var actual = !!(acc && (acc.subs || []).indexOf(z) !== -1);
+          if (followDesired[z] === actual) {
+            var settled = followDesired[z];
+            delete followDesired[z];
+            updateFollowBtn(z);
+            // refresh follower counts on the cards without disturbing panels
+            api('/public/topics').then(function (t) {
+              topicsData = t;
+              renderTopics();
+            }).catch(function () {});
+          } else {
+            flushFollow(z); // last click differs from server — send again
+          }
+        });
+    }
+
+    // ---------- Live results visualization ----------
+    // Data: /api/v3/comments (tallies) + /api/v3/math/pca2 (opinion groups,
+    // consensus). Forms: diverging stacked bars centered on neutral (agree ↔
+    // disagree, pass at center), stat tiles, and dumbbells for the group
+    // divide. Colors are the validated --rz-* custom properties.
+    var openResults = {}; // z -> { loading, comments, math, timer }
+
+    function toggleResults(z) {
+      if (openResults[z]) {
+        if (openResults[z].timer) clearInterval(openResults[z].timer);
+        delete openResults[z];
+        document.body.classList.remove('results-open');
+        withViewTransition(renderTopics);
+        return;
+      }
+      openResults[z] = { loading: true };
+      openResults[z].timer = setInterval(function () { loadResults(z, true); }, 30000);
+      document.body.classList.add('results-open');
+      withViewTransition(renderTopics);
+      loadResults(z);
+    }
+
+    function loadResults(z, quiet) {
+      var p = openResults[z];
+      if (!p) return;
+      api('/public/results?z=' + encodeURIComponent(z)).then(function (d) {
+        if (!openResults[z]) return;
+        openResults[z].loading = false;
+        openResults[z].comments = d.statements || [];
+        openResults[z].math = d.math;
+        openResults[z].contributors = d.contributors || 0;
+        drawResultsPanel(z);
+      }).catch(function () {
+        if (!openResults[z] || quiet) return;
+        openResults[z].loading = false;
+        drawResultsPanel(z);
+        toast('Couldn’t load results — try again shortly.');
+      });
+    }
+
+    function rzShares(c) {
+      var total = c.total || 0;
+      var a = c.agree || 0, d = c.disagree || 0;
+      var s = Math.max(0, total - a - d);
+      return {
+        total: total, a: a, d: d, s: s,
+        pa: total ? a / total : 0, pd: total ? d / total : 0, ps: total ? s / total : 0
+      };
+    }
+
+    // Diverging stacked bar centered on neutral: disagree grows left, agree
+    // grows right, pass straddles the center axis. Half the bar = 100%.
+    function rzBar(sh, tipText) {
+      var passW = sh.ps * 50;
+      var passL = 50 - passW / 2;
+      var disW = sh.pd * 50;
+      var agW = sh.pa * 50;
+      var gap = sh.s > 0 ? 2 : 0; // 2px surface gap only when pass exists
+      var segs = '';
+      if (sh.s > 0) segs += '<div class="rz-seg pass" style="left:' + passL + '%;width:' + passW + '%"></div>';
+      if (sh.d > 0) segs += '<div class="rz-seg disagree" style="right:calc(' + (50 + passW / 2) + '% + ' + gap + 'px);width:calc(' + disW + '% - ' + gap + 'px)"></div>';
+      if (sh.a > 0) segs += '<div class="rz-seg agree" style="left:calc(' + (50 + passW / 2) + '% + ' + gap + 'px);width:calc(' + agW + '% - ' + gap + 'px)"></div>';
+      return '<div class="rz-barwrap">' +
+        '<span class="rz-pct l">' + Math.round(sh.pd * 100) + '%</span>' +
+        '<div class="rz-bar" data-tip="' + esc(tipText) + '">' + segs + '</div>' +
+        '<span class="rz-pct">' + Math.round(sh.pa * 100) + '%</span>' +
+      '</div>';
+    }
+
+    function rzGroupRates(math, tid) {
+      // Per opinion group: share of the group's voters on this statement who agreed
+      var gv = (math && math.groupVotes) || {};
+      var out = [];
+      Object.keys(gv).sort().forEach(function (gid) {
+        var v = (gv[gid].votes || {})[tid];
+        if (!v) return;
+        var n = (v.A || 0) + (v.D || 0) + (v.S || 0);
+        out.push({ gid: gid, n: n, rate: n ? (v.A || 0) / n : 0 });
+      });
+      return out;
+    }
+
+    var RZ_GROUP_COLORS = ['var(--rz-g1)', 'var(--rz-g2)', 'var(--rz-g3)', 'var(--rz-g4)'];
+    var RZ_GROUP_NAMES = ['A', 'B', 'C', 'D'];
+
+    function drawResultsPanel(z) {
+      var p = openResults[z];
+      var el = document.getElementById('rp-' + z);
+      if (!el) return;
+      if (!p) { el.style.display = 'none'; return; }
+      el.style.display = 'block';
+      if (p.loading) { el.innerHTML = '<p class="muted">Loading live results&hellip;</p>'; return; }
+
+      var comments = (p.comments || []).filter(function (c) { return c.txt; });
+      if (!comments.length) {
+        el.innerHTML = '<p class="muted">No results yet — votes will show up here as they come in.</p>';
+        return;
+      }
+      var math = p.math;
+      var byTid = {};
+      comments.forEach(function (c) { byTid[c.tid] = c; });
+
+      var totalVotes = comments.reduce(function (s, c) { return s + (c.total || 0); }, 0);
+      var voters = (math && math.n) ||
+        (topicsData.find(function (t) { return t.zinvite === z; }) || {}).participant_count || 0;
+
+      var html = '';
+
+      // Lead: the basic numbers
+      var contributors = p.contributors || 0;
+      html += '<div class="rz-tiles">' +
+        '<div><div class="rz-tile-label">Voters</div><div class="rz-tile-value" data-n="' + voters + '">' + voters + '</div></div>' +
+        '<div><div class="rz-tile-label">Contributors</div><div class="rz-tile-value" data-n="' + contributors + '">' + contributors + '</div></div>' +
+        '<div><div class="rz-tile-label">Statements</div><div class="rz-tile-value" data-n="' + comments.length + '">' + comments.length + '</div></div>' +
+        '<div><div class="rz-tile-label">Votes</div><div class="rz-tile-value" data-n="' + totalVotes + '">' + totalVotes + '</div></div>' +
+      '</div>';
+
+      // Points of agreement
+      var voted = comments.filter(function (c) { return (c.total || 0) >= 3; });
+      var common = voted.slice().sort(function (a, b) {
+        return rzShares(b).pa - rzShares(a).pa || (b.total || 0) - (a.total || 0);
+      }).filter(function (c) { return rzShares(c).pa >= 0.6; }).slice(0, 3);
+      if (common.length) {
+        html += '<div class="rz-h">&#x1f91d; Common ground</div>' +
+          '<div class="rz-sub">What neighbors agree on most</div>';
+        common.forEach(function (c) { html += rsRow(c); });
+      }
+
+      // Every statement, in the plain legible format
+      html += '<div class="rz-h">&#x1f4ca; All statements</div>' +
+        '<div class="rz-sub">Sorted by agreement &middot; live, updates as votes come in</div>';
+      comments.slice().sort(function (a, b) { return rzShares(b).pa - rzShares(a).pa; })
+        .forEach(function (c) { html += rsRow(c); });
+
+      // Everything analytical lives behind one quiet disclosure
+      var adv = '';
+      var clusters = math && math.groups;
+      if (clusters && clusters.length >= 2) {
+        adv += '<div class="rz-h">&#x1f9ed; Where perspectives differ</div>' +
+          '<div class="rz-sub">Voting revealed ' + clusters.length + ' broad perspectives. Dots show how much of each group agrees.</div>';
+        adv += '<div class="rz-chips">' + clusters.map(function (g, i) {
+          return '<span class="rz-chip"><i style="background:' + RZ_GROUP_COLORS[i] + '"></i>Perspective ' +
+            RZ_GROUP_NAMES[i] + ' &middot; ' + g.size + ' voter' + (g.size === 1 ? '' : 's') + '</span>';
+        }).join('') + '</div>';
+        var gaps = comments.map(function (c) {
+          var rates = rzGroupRates(math, c.tid).filter(function (r) { return r.n > 0; });
+          if (rates.length < 2) return null;
+          var rs = rates.map(function (r) { return r.rate; });
+          return { c: c, rates: rates, gap: Math.max.apply(null, rs) - Math.min.apply(null, rs) };
+        }).filter(Boolean).sort(function (a, b) { return b.gap - a.gap; }).slice(0, 5);
+        gaps.forEach(function (g) {
+          adv += '<div class="rz-row"><div class="rz-txt">&ldquo;' + esc(g.c.txt) + '&rdquo;</div>' + rzDumbbell(g) + '</div>';
+        });
+      }
+      adv += '<details class="rz-table"><summary>View as table</summary><table>' +
+        '<tr><th>Statement</th><th>Agree</th><th>Disagree</th><th>Pass</th><th>Votes</th></tr>' +
+        comments.map(function (c) {
+          var sh = rzShares(c);
+          return '<tr><td>' + esc(c.txt) + '</td>' +
+            '<td class="num">' + sh.a + '</td><td class="num">' + sh.d + '</td>' +
+            '<td class="num">' + sh.s + '</td><td class="num">' + sh.total + '</td></tr>';
+        }).join('') + '</table></details>';
+      html += '<details class="rz-adv"><summary>Advanced results</summary><div class="rz-adv-body">' + adv + '</div></details>';
+
+      el.innerHTML = html;
+      rzBindTips(el);
+
+      if (p.animated) {
+        // Refreshes render settled — no replayed entrances
+        el.classList.add('rp-in');
+      } else {
+        p.animated = true;
+        // Staggered drift-up for the first dozen rows, then the draw-in
+        var rows = el.querySelectorAll('.rz-row');
+        for (var ri = 0; ri < rows.length; ri++) {
+          rows[ri].style.transitionDelay = (Math.min(ri, 12) * 30) + 'ms';
+        }
+        el.querySelectorAll('.rz-tile-value').forEach(countUp);
+        requestAnimationFrame(function () {
+          requestAnimationFrame(function () { el.classList.add('rp-in'); });
+        });
+      }
+    }
+
+    // The plain, most-legible row: bold agree %, two small bars, counts.
+    function rsRow(c) {
+      var sh = rzShares(c);
+      var agPct = Math.round(sh.pa * 100);
+      var dgPct = Math.round(sh.pd * 100);
+      return '<div class="rz-row rs-row"><div class="rz-txt">&ldquo;' + esc(c.txt) + '&rdquo;</div>' +
+        '<div class="rs-stats">' +
+          '<span class="rs-num"><b>' + agPct + '%</b> agree</span>' +
+          '<span class="rs-bar" style="width:' + Math.round(agPct * 0.9) + 'px;background:var(--rz-agree)"></span>' +
+          '<span class="rs-bar" style="width:' + Math.round(dgPct * 0.9) + 'px;background:var(--rz-disagree)"></span>' +
+          '<span class="rs-num muted">' + dgPct + '% disagree &middot; ' + sh.total + ' vote' + (sh.total === 1 ? '' : 's') +
+            (sh.s ? ' &middot; ' + sh.s + ' pass' : '') + '</span>' +
+        '</div></div>';
+    }
+
+    function rzDumbbell(g) {
+      var lo = Math.min.apply(null, g.rates.map(function (r) { return r.rate; }));
+      var hi = Math.max.apply(null, g.rates.map(function (r) { return r.rate; }));
+      var html = '<div class="rz-dumb"><div class="rz-dcoord">' +
+        '<div class="track"></div>' +
+        '<div class="link" style="left:' + (lo * 100) + '%;width:' + ((hi - lo) * 100) + '%"></div>';
+      g.rates.forEach(function (r) {
+        var i = parseInt(r.gid, 10);
+        var pct = Math.round(r.rate * 100);
+        var tip = 'Perspective ' + RZ_GROUP_NAMES[i] + ': ' + pct + '% agree (' + r.n + ' voting)';
+        html += '<div class="dot" data-tip="' + esc(tip) + '" style="left:calc(' + (r.rate * 100) + '% - 6px);background:' + RZ_GROUP_COLORS[i] + '"></div>';
+        html += '<div class="dl" style="left:calc(' + (r.rate * 100) + '% + ' + (r.rate > 0.85 ? -34 : 10) + 'px)">' + pct + '%</div>';
+      });
+      return html + '</div></div>';
+    }
+
+    // Shared tooltip
+    function rzBindTips(scope) {
+      var tip = document.getElementById('rz-tip');
+      scope.querySelectorAll('[data-tip]').forEach(function (m) {
+        m.addEventListener('mouseenter', function () {
+          tip.textContent = m.getAttribute('data-tip');
+          tip.style.display = 'block';
+        });
+        m.addEventListener('mousemove', function (e) {
+          tip.style.left = Math.min(e.clientX + 12, window.innerWidth - 250) + 'px';
+          tip.style.top = (e.clientY + 14) + 'px';
+        });
+        m.addEventListener('mouseleave', function () { tip.style.display = 'none'; });
       });
     }
 
@@ -673,14 +1943,17 @@
     function toggleVote(z) {
       if (openPanels[z]) {
         delete openPanels[z];
-        renderTopics();
+        withViewTransition(renderTopics);
         return;
       }
       openPanels[z] = { loading: true };
-      renderTopics();
+      withViewTransition(renderTopics);
       fetch('/api/v3/participationInit?conversation_id=' + encodeURIComponent(z) +
             '&xid=' + encodeURIComponent(myXid()))
-        .then(function (r) { return r.json(); })
+        .then(function (r) {
+          if (!r.ok) throw new Error('init failed: ' + r.status);
+          return r.json();
+        })
         .then(function (d) {
           var tok = (d.auth && d.auth.token) || tokens()[z];
           if (d.auth && d.auth.token) saveToken(z, d.auth.token);
@@ -712,7 +1985,7 @@
       var writeBlock =
         '<div class="vp-write">' +
           '<div class="fieldlabel">Add your own statement <span>(one clear idea, under 140 characters)</span></div>' +
-          '<textarea id="w-' + z + '" maxlength="140" placeholder="I think the village should&hellip;"></textarea>' +
+          '<textarea id="w-' + z + '" maxlength="140" placeholder="Say it plainly, one idea — “Croton should…”"></textarea>' +
           '<div style="margin-top:0.6rem"><button class="btn btn-outline" data-submit-stmt="' + z + '">Submit statement</button></div>' +
         '</div>' +
         '<div class="vp-review">' +
@@ -767,10 +2040,16 @@
       if (el) el.innerHTML = '<p class="muted" style="margin-top:0.6rem">Loading your votes&hellip;</p>';
       Promise.all([
         fetch('/api/v3/participationInit?conversation_id=' + encodeURIComponent(z) +
-              '&xid=' + encodeURIComponent(myXid())).then(function (r) { return r.json(); }),
+              '&xid=' + encodeURIComponent(myXid())).then(function (r) {
+          if (!r.ok) throw new Error('init ' + r.status);
+          return r.json();
+        }),
         fetch('/api/v3/comments?conversation_id=' + encodeURIComponent(z), {
           headers: { 'Authorization': 'Bearer ' + p.token }
-        }).then(function (r) { return r.json(); })
+        }).then(function (r) {
+          if (!r.ok) throw new Error('comments ' + r.status);
+          return r.json();
+        })
       ]).then(function (res) {
         var votes = {};
         (res[0].votes || []).forEach(function (v) { votes[v.tid] = v.vote; });
@@ -840,7 +2119,13 @@
         p.voted++;
         p.current = d.nextComment && d.nextComment.tid !== undefined ? d.nextComment : null;
         if (p.current && p.current.total) p.total = p.current.total;
+        // The review ballot is a snapshot — refresh it (open) or drop it
+        // (closed) so this vote can't be missing from it later.
+        if (p.review) p.review = null;
         drawVotePanel(z);
+        if (p.reviewOpen) loadReview(z);
+        if (openResults[z]) loadResults(z, true); // keep live results live
+        msBump('ms-votes');
       }).catch(function () {
         toast('That vote didn’t go through — try again.');
         drawVotePanel(z);
@@ -865,6 +2150,7 @@
         ta.value = '';
         btn.disabled = false;
         toast('Statement submitted! Neighbors can vote on it now.');
+        msBump('ms-stmts');
       }).catch(function (err) {
         btn.disabled = false;
         toast(err.message);
@@ -906,12 +2192,22 @@
         }
         submit.disabled = false;
         notice.className = 'notice success';
+        msBump('ms-topics');
         notice.innerHTML = '&#x2705; Your topic is live' + (a ? ' and you’re following it' : '') + '! ' +
           'Vote on it above, or <a href="' + esc(d.url) + '">open the full view</a>.' +
-          (a ? '' : ' <b>Tip:</b> sign up for updates (top right) to hear when neighbors add statements.');
+          (a ? '' : ' <b>Tip:</b> sign up for updates (top left) to hear when neighbors add statements.');
+        // A topic without readers goes nowhere — hand the creator the megaphone
+        notice.appendChild(buildShareBar(
+          { slug: d.slug || d.zinvite, zinvite: d.zinvite, topic: d.topic || 'New topic' },
+          '&#x1f4e3; Now bring the neighbors!',
+          'Topics come alive when people see them — share yours where Croton gathers.'));
         document.getElementById('create-form').reset();
         document.getElementById('cc-topic').textContent = '0';
         loadTopics();
+        // If we're managing topics, refresh that list too
+        if (document.getElementById('activity-view').style.display !== 'none' && activityTab === 'topics') {
+          openActivity('topics');
+        }
       }).catch(function (err) {
         submit.disabled = false;
         notice.className = 'notice error';
@@ -919,9 +2215,75 @@
       });
     });
 
+    // ---------- Bug reports ----------
+    document.getElementById('bug-form').addEventListener('submit', function (e) {
+      e.preventDefault();
+      var text = document.getElementById('bug-text').value.trim();
+      if (text.length < 10) { toast('Tell us a little more — at least a sentence.'); return; }
+      api('/public/bug', {
+        text: text,
+        contact: document.getElementById('bug-contact').value.trim(),
+        website: document.getElementById('bug-website').value
+      }).then(function () {
+        document.getElementById('bug-text').value = '';
+        document.getElementById('bug-contact').value = '';
+        document.getElementById('bug-report').removeAttribute('open');
+        screenNote('&#x1f41e;&#x2705; <b>Report sent — thank you!</b> We read every one.', 'success', 5000);
+      }).catch(function (err) {
+        toast(err.message);
+      });
+    });
+
     // ---------- Boot ----------
     refreshMeButton();
     loadTopics();
+
+    // Resume an in-flight signup verification across reloads
+    if (!account() && lsGet(LS_CLAIM, null)) startClaimPoll();
+
+    // Cookie signin: a device that tapped a verify link is signed in even
+    // with empty localStorage (fresh browser, cleared storage).
+    if (!account()) {
+      api('/public/me').then(function (d) {
+        if (d && d.accountId) adoptAccount(d, '&#x2705; <b>Signed in.</b>');
+      }).catch(function () {});
+    }
+
+    // Re-sync follow state from the server — localStorage drifts when follows
+    // change elsewhere (another device, email unsubscribe link, WhatsApp).
+    (function () {
+      var a = account();
+      if (!a || !a.accountId) return;
+      var syncedId = a.accountId;
+      api('/public/account?account=' + encodeURIComponent(syncedId))
+        .then(function (d) {
+          // Re-read at response time — a Follow click or re-signup may have
+          // updated localStorage while this request was in flight.
+          var cur = account();
+          if (!cur || cur.accountId !== syncedId) return;
+          syncXid(d);
+          var changed = JSON.stringify(d.subs || []) !== JSON.stringify(cur.subs || [])
+            || d.allTopics !== cur.allTopics || (d.name || '') !== (cur.name || '');
+          if (!changed) return;
+          cur.name = d.name || cur.name;
+          cur.allTopics = d.allTopics;
+          cur.subs = d.subs || [];
+          cur.email = d.email || cur.email || null;
+          cur.whatsapp = d.whatsapp || cur.whatsapp || null;
+          lsSet(LS_ACCOUNT, cur);
+          refreshMeButton();
+          loadTopics();
+        })
+        .catch(function (err) {
+          // Account vanished server-side — sign this browser out of it
+          var cur = account();
+          if (cur && cur.accountId === syncedId && /Unknown account/.test(err.message)) {
+            lsSet(LS_ACCOUNT, null);
+            refreshMeButton();
+            loadTopics();
+          }
+        });
+    })();
   </script>
 </body>
 </html>

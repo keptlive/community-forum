@@ -35,7 +35,7 @@ test('creator authorization and unsubscribe persist through real HTTP routes', a
   await new Promise(resolve => reserve.close(resolve));
   const child = spawn(process.execPath, [path.resolve(__dirname, '../server/polis-server.js')], {
     env: { ...process.env, PORT: String(port), STATE_FILE: statePath, POLIS_JWT_KEY: keyPath,
-      IP_SALT_FILE: path.join(dir, 'salt'), POLIS_PUBLIC_URL: 'http://127.0.0.1:' + port,
+      POLIS_PETITIONS_DIR: path.join(dir, 'petitions'), IP_SALT_FILE: path.join(dir, 'salt'), POLIS_PUBLIC_URL: 'http://127.0.0.1:' + port,
       POLIS_API_URL: 'http://127.0.0.1:' + upstream.address().port },
     stdio: ['ignore', 'pipe', 'pipe']
   });
@@ -69,4 +69,13 @@ test('creator authorization and unsubscribe persist through real HTTP routes', a
   assert.equal(state.webAccounts.account.allTopics, false);
   assert.equal(state.userState.phone.subscribed, false);
   assert.equal((await request('/public/unsubscribe', { accountId: 'missing', all: true })).status, 404);
+  const callsBefore = upstreamCalls;
+  for (const route of ['/create', '/seed', '/seed-bulk', '/wa/notify']) {
+    const response = await fetch('http://127.0.0.1:' + port + route, {
+      method: 'POST', headers: {'Content-Type': 'application/json', 'X-External-Request': '1'}, body: '{}'
+    });
+    assert.equal(response.status, 404, route);
+  }
+  assert.equal(upstreamCalls, callsBefore, 'external admin requests never reach Polis');
+  assert.equal((await fetch('http://127.0.0.1:' + port + '/petitions')).status, 200);
 });

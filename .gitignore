@@ -4,3 +4,4 @@ jwt-private.pem
 voting-state.json
 *.env
 node_modules/
+server/petitions/
