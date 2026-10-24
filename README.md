@@ -13,6 +13,17 @@ topics.
 
 ## Components
 
+The public source includes the deployed Croton forum's verified email/WhatsApp
+contacts, notification cooldowns, topic results and separate petition workflow.
+`server/petitions.js` stores petition records and private uploads separately from
+voting state. Set `POLIS_PETITIONS_DIR` to a persistent private directory and
+include it in backups; never commit its contents. Optional QR codes use
+`qrcode-generator` when installed. Public pages and self-hosted fonts are in `web/`.
+Set `POLIS_JWT_ISS` to the issuer configured in your Polis deployment, and set
+`POLIS_BUG_EMAIL` for bug-report delivery (no private recipient is bundled).
+Keep `X-External-Request: 1` on public proxy requests so the hub's allowlist
+continues to deny private admin and WhatsApp control routes.
+
 | Path | What it is |
 |---|---|
 | `server/polis-server.js` | The hub: a single-file Node service (no dependencies) that proxies the Polis REST API with a self-signed admin JWT, exposes a small safe public API, runs the WhatsApp voting state machine, and sends notifications (Mailgun email + WhatsApp queue) |
