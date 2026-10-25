@@ -2,6 +2,7 @@
 jwt-private.pem
 *.pem
 voting-state.json
+vapid.json
 *.env
 node_modules/
 server/petitions/

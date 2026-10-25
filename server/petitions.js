@@ -416,6 +416,12 @@ async function notifyOwner(p) {
   if (wa) {
     ctx.queueWa({ phone: wa, text: `📈 *${p.title}* is at ${c.total} signature${c.total === 1 ? '' : 's'} (${c.online} online, ${c.paper} paper).\n${petitionUrl(p)}` });
   }
+  await ctx.pushToAccount(p.ownerAccountId, acct, {
+    title: `${c.total} signature${c.total === 1 ? '' : 's'} on your petition`,
+    body: `${p.title}\n${c.online} online · ${c.paper} on paper${p.goal ? ` · goal ${p.goal}` : ''}`,
+    url: petitionUrl(p),
+    tag: `po-${p.id}`,
+  });
 }
 
 // Email the organizer when a near-duplicate is detected so they can review.
@@ -857,8 +863,10 @@ async function handle(req, res) {
 
     const viewer = viewerAccount(req, body.accountId);
     const acct = viewer && ctx.getAccount(viewer);
-    if (!acct || acct.verified === false) {
-      json(res, 403, { error: 'Sign up and confirm your email or WhatsApp before starting a petition — a petition carries your name as the organizer.' });
+    // An organizer needs a confirmed way to be reached (a phone notification
+    // alone is a device, not a contact).
+    if (!acct || acct.verified === false || !(ctx.acctEmail(acct) || ctx.acctWhatsapp(acct))) {
+      json(res, 403, { error: 'Sign up and confirm your email before starting a petition — a petition carries your name as the organizer.' });
       return true;
     }
     const ipHash = ctx.hashIp(ctx.clientIp(req));
@@ -903,6 +911,12 @@ async function handle(req, res) {
         if (!a.allTopics || a.verified === false || aid === viewer) continue;
         const wa = ctx.acctWhatsapp(a);
         if (wa) ctx.queueWa({ phone: wa, text: line });
+        await ctx.pushToAccount(aid, a, {
+          title: `New petition: ${title}`,
+          body: summary ? summary.slice(0, 150) : 'A neighbor started a petition. Read it and decide for yourself.',
+          url: petitionUrl(p),
+          tag: `p-${p.id}`,
+        });
         const em = ctx.acctEmail(a);
         if (em) {
           await ctx.sendEmail(em, `New petition: ${title}`,

@@ -10,6 +10,7 @@ const fs = require('fs');
 const crypto = require('crypto');
 const path = require('path');
 const petitions = require('./petitions');
+const push = require('./push');
 
 const PORT = parseInt(process.env.PORT || '9876', 10);
 
@@ -26,20 +27,16 @@ const JWT_ISS = process.env.POLIS_JWT_ISS || 'https://croton.kept.live/';
 const KEY_PATH = process.env.POLIS_JWT_KEY || path.join(__dirname, 'jwt-private.pem');
 const ADMIN_UID = parseInt(process.env.POLIS_ADMIN_UID || '2', 10);
 const STATE_FILE = process.env.STATE_FILE || path.join(__dirname, 'voting-state.json');
-// WhatsApp community announcement group (full JID, e.g. 1203...@g.us).
-// When set, new-topic and new-statement alerts are also posted there.
-const WA_ANNOUNCE_JID = process.env.POLIS_WA_ANNOUNCE_JID || '';
-// Parent WhatsApp community — when set, each active topic gets its own
-// auto-created subgroup (wireclaw executes the creation via action messages).
-const WA_COMMUNITY_JID = process.env.POLIS_WA_COMMUNITY_JID || '';
+// The WhatsApp bridge (server/whatsapp.js) is retired in favour of push
+// notifications and stays switched off: POLIS_WHATSAPP=on brings it back,
+// with its POLIS_WA_* settings. Off, nothing is queued for WhatsApp and no
+// WhatsApp contact is used, but what it stored is kept.
+const wa = process.env.POLIS_WHATSAPP === 'on' ? require('./whatsapp') : null;
 
-// --- Per-user voting state ---
-// { phone: { zinvite, token, pid, lastTid, lastStatement, phase, subscribed } }
-// phase: 'idle' | 'voting' | 'writing'
-let userState = {};
-
-// Pending DM notifications for WireClaw to pick up
-let pendingNotifications = [];
+// The bridge's own data, kept in the state file either way: DM sessions
+// (phone -> { zinvite, token, pid, lastTid, lastStatement, phase, subscribed }),
+// the outgoing queue WireClaw collects, and topic subgroups (zinvite -> JID).
+let waData = { userState: {}, pendingNotifications: [], waTopicGroups: {} };
 
 // Track last known comment count per conversation (for new-statement detection)
 let conversationCommentCounts = {};
@@ -73,6 +70,11 @@ let pendingCounts = {};
 // Weekly unvoted-backlog nudges ("contact" -> ts of last nudge).
 let nudgeLog = {};
 
+// One-time codes that carry an account into an iPhone Home Screen app, which
+// starts with storage of its own: code -> { accountId, created }.
+let deviceCodes = {};
+const DEVICE_CODE_TTL = 30 * 60000;      // it sits in the address bar, next to Share
+
 // Short-lived cache for /public/results (zinvite -> { ts, body }).
 const resultsCache = {};
 
@@ -81,8 +83,19 @@ const statsCache = {};
 
 // Bug report throttle (hashed IP -> timestamps)
 const bugReportLog = {};
+// Push sign-ups and refreshes (hashed IP -> timestamps)
+const pushLog = {};
+const pushAccountLog = {};
+
+function throttled(log, key, limit, windowMs) {
+  const now = Date.now();
+  const hits = (log[key] || []).filter(t => now - t < windowMs);
+  log[key] = hits;
+  if (hits.length >= limit) return true;
+  hits.push(now);
+  return false;
+}
 const BUG_EMAIL = process.env.POLIS_BUG_EMAIL || '';
-const WA_SUPPORT_JID = process.env.POLIS_WA_SUPPORT_JID || '';
 
 // WhatsApp statement authors ("phone|zinvite" -> ts): skip their next
 // new-statement alert — it's (at least partly) their own statement.
@@ -118,29 +131,26 @@ function notifyCount(recipient, zinvite, newCount) {
   return total;
 }
 
-// Per-topic WhatsApp community subgroups: zinvite -> group JID.
-// waTopicGroupRequests tracks in-flight creation asks (zinvite -> ts) so a
-// slow wireclaw doesn't get duplicate create actions every sync cycle.
-let waTopicGroups = {};
-const waTopicGroupRequests = {};
-
 function loadState() {
   try {
     if (fs.existsSync(STATE_FILE)) {
       const data = JSON.parse(fs.readFileSync(STATE_FILE, 'utf-8'));
-      userState = data.userState || data;
+      waData = {
+        userState: data.userState || {},
+        pendingNotifications: data.pendingNotifications || [],
+        waTopicGroups: data.waTopicGroups || {},
+      };
       conversationCommentCounts = data.conversationCommentCounts || {};
-      pendingNotifications = data.pendingNotifications || [];
       communityTopics = data.communityTopics || {};
       webAccounts = data.webAccounts || {};
       topicSlugs = data.topicSlugs || {};
       pendingVerifications = data.pendingVerifications || {};
-      waTopicGroups = data.waTopicGroups || {};
       notifyCooldown = data.notifyCooldown || {};
       knownActiveTopics = data.knownActiveTopics || {};
       pendingCounts = data.pendingCounts || {};
       recentAuthors = data.recentAuthors || {};
       nudgeLog = data.nudgeLog || {};
+      deviceCodes = data.deviceCodes || {};
       for (const acct of Object.values(webAccounts)) {
         // Accounts created before contact verification existed: grandfathered.
         if (acct.verified === undefined) acct.verified = true;
@@ -152,7 +162,7 @@ function loadState() {
           acct.whatsappVerified = !!acct.whatsapp && acct.verified !== false;
         }
       }
-      console.log(`Loaded state for ${Object.keys(userState).length} users`);
+      console.log(`Loaded state for ${Object.keys(webAccounts).length} accounts`);
     }
   } catch (e) {
     console.error('Failed to load state:', e.message);
@@ -163,26 +173,26 @@ function loadState() {
       fs.copyFileSync(STATE_FILE, bak);
       console.error(`Corrupt state backed up to ${bak}`);
     } catch {}
-    userState = {};
   }
 }
 
 function saveState() {
   try {
     const json = JSON.stringify({
-      userState,
+      userState: waData.userState,
       conversationCommentCounts,
-      pendingNotifications,
+      pendingNotifications: waData.pendingNotifications,
       communityTopics,
       webAccounts,
       topicSlugs,
       pendingVerifications,
-      waTopicGroups,
+      waTopicGroups: waData.waTopicGroups,
       notifyCooldown,
       knownActiveTopics,
       pendingCounts,
       recentAuthors,
       nudgeLog,
+      deviceCodes,
     }, null, 2);
     // Atomic replace — a crash mid-write must never corrupt the state file.
     const tmp = STATE_FILE + '.tmp';
@@ -210,6 +220,9 @@ function pruneVerifications() {
   }
   for (const [k, ts] of Object.entries(nudgeLog)) {
     if (now - ts > 30 * 24 * 3600000) { delete nudgeLog[k]; changed = true; }
+  }
+  for (const [code, c] of Object.entries(deviceCodes)) {
+    if (now - c.created > DEVICE_CODE_TTL) { delete deviceCodes[code]; changed = true; }
   }
   if (changed) saveState();
 }
@@ -350,28 +363,8 @@ function readMailgunBody(req) {
 
 // --- Polis XID helpers ---
 
-// Initialize a user for a conversation via XID (phone number)
-// Returns { token, pid, nextComment, conversation }
-// One person = one Polis participant, no matter the surface. A verified
-// account carries a canonical xid (whatsapp → phone digits, email → the
-// browser xid captured at signup); WhatsApp sessions resolve through it so
-// web, email, and DM votes all land on the same participant.
-function canonicalXid(phoneish) {
-  const digits = String(phoneish).replace(/\D/g, '');
-  if (digits) {
-    for (const acct of Object.values(webAccounts)) {
-      if (acct.whatsapp === digits && acct.whatsappVerified && acct.xid) {
-        return acct.xid;
-      }
-    }
-  }
-  return String(phoneish);
-}
-
-async function initUserForConversation(phone, zinvite) {
-  return initByXid(canonicalXid(phone), zinvite);
-}
-
+// Initialize a participant for a conversation by XID.
+// Returns { token, pid, nextComment, conversation, votes }
 async function initByXid(xid, zinvite) {
   const result = await polisRequest(
     'GET',
@@ -632,10 +625,21 @@ function accountsFollowing(zinvite) {
     .filter(([, a]) => a.verified !== false && (a.subs || []).includes(zinvite));
 }
 
-// Dual-contact helpers: an account may carry both an email and a WhatsApp
-// number; each is usable only once verified via its own clickthrough link.
+// Contact helpers: an account may carry an email and a WhatsApp number; each
+// is usable only once verified via its own clickthrough link, and WhatsApp
+// only while the bridge is on.
 function acctEmail(a) { return a.emailVerified && a.email ? a.email : null; }
-function acctWhatsapp(a) { return a.whatsappVerified && a.whatsapp ? a.whatsapp : null; }
+function acctWhatsapp(a) { return wa && a.whatsappVerified && a.whatsapp ? a.whatsapp : null; }
+
+// The legacy primary-channel fields (channel, contact) older code and older
+// browsers still read.
+function settleChannel(a) {
+  if (a.whatsappVerified && !a.emailVerified) a.channel = 'whatsapp';
+  else if (a.email) a.channel = 'email';
+  else if (a.whatsapp) a.channel = 'whatsapp';
+  else a.channel = (a.devices || []).length ? 'push' : 'email';
+  a.contact = a.channel === 'email' ? a.email : a.channel === 'whatsapp' ? a.whatsapp : null;
+}
 
 function findAccountByContact(channel, contact) {
   return Object.keys(webAccounts).find(id => {
@@ -657,6 +661,12 @@ function mergeAccounts(keepId, dropId) {
   if ((!keep.xid || isSyntheticXid(keep.xid)) && drop.xid && !isSyntheticXid(drop.xid)) {
     setAccountXid(keepId, drop.xid, 'merge');
   }
+  if (!keep.name && drop.name) keep.name = drop.name;
+  // Devices come along (newest kept when over the limit).
+  const devices = [...(keep.devices || [])];
+  for (const d of drop.devices || []) if (!devices.some(k => k.endpoint === d.endpoint)) devices.push(d);
+  keep.devices = devices.slice(-MAX_DEVICES);
+  settleChannel(keep);
   console.log(`Accounts merged: ${dropId} -> ${keepId}`);
   delete webAccounts[dropId];
   saveState();
@@ -689,14 +699,23 @@ function prevAccountIsSamePerson(prevId, contacts) {
 // Contacts already owned by a different account never attach (that would
 // graft one person's channel onto another's account).
 function finalizeTargetedContact(p, entry) {
-  const targetId = p.targetAccountId;
-  const target = webAccounts[targetId];
+  let targetId = p.targetAccountId;
+  let target = webAccounts[targetId];
   if (!target) { p.verified = true; p.grantAccount = false; saveState(); return null; }
   const owner = findAccountByContact(entry.channel, entry.contact);
   if (owner && owner !== targetId) {
     // The link's wording names the target account and the tapper owns this
     // contact — the tap is informed consent to bring their account along.
-    mergeAccounts(targetId, owner);
+    // An account that is only devices (notifications, no confirmed contact)
+    // is usually minutes old: it folds into the contact's account, which
+    // carries the history, and the signing-up browser is handed that one.
+    if (!target.emailVerified && !target.whatsappVerified) {
+      mergeAccounts(owner, targetId);
+      targetId = owner;
+      target = webAccounts[owner];
+    } else {
+      mergeAccounts(targetId, owner);
+    }
   }
   if (entry.channel === 'email') {
     target.email = entry.contact;
@@ -705,14 +724,13 @@ function finalizeTargetedContact(p, entry) {
     target.whatsapp = entry.contact;
     target.whatsappVerified = true;
     if (!target.xid) setAccountXid(targetId, entry.contact, 'anchor-phone');
-    if (!target.welcomed) {
+    if (wa && !target.welcomed) {
       target.welcomed = true;
-      pendingNotifications.push({ phone: entry.contact, text: formatWelcome() });
+      wa.welcome(entry.contact);
     }
   }
   target.verified = true;
-  target.channel = target.whatsappVerified && !target.emailVerified ? 'whatsapp' : (target.email ? 'email' : 'whatsapp');
-  target.contact = target.channel === 'email' ? target.email : target.whatsapp;
+  settleChannel(target);
   p.verified = true;
   p.accountId = targetId;
   p.grantAccount = true;
@@ -768,9 +786,7 @@ function finalizeContact(p, entry) {
     acct.whatsappVerified = true;
   }
   acct.verified = true;
-  // Legacy primary fields stay coherent for older consumers.
-  acct.channel = acct.whatsappVerified && !acct.emailVerified ? 'whatsapp' : (acct.email ? 'email' : 'whatsapp');
-  acct.contact = acct.channel === 'email' ? acct.email : acct.whatsapp;
+  settleChannel(acct);
 
   // Canonical voting identity: a verified WhatsApp number anchors it (keeps
   // DM vote history); otherwise the browser xid from signup. A real browser
@@ -791,9 +807,9 @@ function finalizeContact(p, entry) {
   p.verified = true;
   p.accountId = accountId;
   // First verified WhatsApp contact gets the onboarding DM.
-  if (acct.whatsappVerified && !acct.welcomed) {
+  if (wa && acct.whatsappVerified && !acct.welcomed) {
     acct.welcomed = true;
-    pendingNotifications.push({ phone: acct.whatsapp, text: formatWelcome() });
+    wa.welcome(acct.whatsapp);
   }
   saveState();
   return accountId;
@@ -807,6 +823,7 @@ function accountPayload(accountId) {
     emailVerified: !!a.emailVerified, whatsappVerified: !!a.whatsappVerified,
     allTopics: !!a.allTopics, subs: a.subs || [], verified: a.verified !== false,
     xid: a.xid || null,
+    devices: (a.devices || []).map(d => ({ id: d.id, platform: d.platform, created: d.created })),
   };
 }
 
@@ -940,6 +957,56 @@ function verifyPage(title, msg, icon) {
     `<div class="icon">${icon || '📨'}</div><h1>${title}</h1><p>${msg}</p>`);
 }
 
+// --- Notifications on the phone (Web Push, server/push.js) ---
+// A device is one browser's push subscription on an account:
+// { id, endpoint, p256dh, auth, platform, created }. The subscription itself
+// proves the device — only that browser and its push service ever hold it —
+// so adding one needs no confirmation link. Devices leave when the browser
+// says so (sign-out, "turn off") or the push service answers 404/410.
+const pusher = push.createPush({
+  keyFile: process.env.POLIS_VAPID_FILE || path.join(path.dirname(STATE_FILE), 'vapid.json'),
+  subject: process.env.POLIS_VAPID_SUBJECT || PUBLIC_URL,
+  outbox: process.env.POLIS_PUSH_TEST_OUTBOX || '',
+});
+const MAX_DEVICES = 10;                      // per account; the oldest goes first
+
+const deviceIdOf = (endpoint) => crypto.createHash('sha256').update(endpoint).digest('base64url').slice(0, 12);
+
+function findDevice(endpoint) {
+  for (const [accountId, a] of Object.entries(webAccounts)) {
+    if ((a.devices || []).some(d => d.endpoint === endpoint)) return accountId;
+  }
+  return null;
+}
+
+function dropDevice(accountId, test) {
+  const a = webAccounts[accountId];
+  if (!a || !a.devices) return false;
+  const before = a.devices.length;
+  a.devices = a.devices.filter(d => !test(d));
+  settleChannel(a);
+  return a.devices.length !== before;
+}
+
+// Send one notification to every device on an account. Never throws; a device
+// whose push service says it is gone is removed. Returns how many took it.
+async function pushToAccount(accountId, acct, message) {
+  const devices = ((acct && acct.devices) || []).slice(); // /public/push may change the live list mid-send
+  if (!devices.length) return 0;
+  const results = await pusher.fanout(devices, message);
+  const gone = new Set();
+  results.forEach((r, i) => {
+    if (r.gone) gone.add(devices[i].endpoint);
+    else if (!r.ok) console.error(`push: account ${accountId} device ${devices[i].id} → ${r.status} ${r.detail || ''}`);
+  });
+  if (gone.size) {
+    dropDevice(accountId, d => gone.has(d.endpoint));
+    console.log(`push: account ${accountId}: ${gone.size} device(s) gone, removed`);
+    saveState();
+  }
+  return results.filter(r => r.ok).length;
+}
+
 // Fan a statement alert out to a topic's followers.
 // makeMessage/makeSubject receive the recipient's effective count (new +
 // anything accumulated during their cooldown); statements get one-click
@@ -947,20 +1014,22 @@ function verifyPage(title, msg, icon) {
 async function notifyGroup(zinvite, topic, makeMessage, skipPhones, makeSubject, statements, newCount) {
   const skip = new Set(skipPhones || []);
   for (const [accountId, acct] of accountsFollowing(zinvite)) {
-    const wa = acctWhatsapp(acct);
+    const phone = acctWhatsapp(acct);
     const em = acctEmail(acct);
-    if (wa && !skip.has(wa)) {
-      skip.add(wa);
-      const n = notifyCount(wa, zinvite, newCount);
+    if (phone && !skip.has(phone)) {
+      skip.add(phone);
+      const n = notifyCount(phone, zinvite, newCount);
+      if (n) wa.alert(phone, zinvite, topic, `${makeMessage(n)}\n\nReply *vote* to vote now, or *unsubscribe* to stop updates.`);
+    }
+    if ((acct.devices || []).length) {
+      const n = notifyCount(`push:${accountId}`, zinvite, newCount);
       if (n) {
-        // Point their DM session at this topic if they aren't mid-conversation,
-        // so a bare "vote" reply lands in the right place.
-        const st = userState[wa] || { phase: 'idle' };
-        if (!st.zinvite || st.phase === 'idle') { st.zinvite = zinvite; st.topic = topic; }
-        userState[wa] = st;
-        pendingNotifications.push({
-          phone: wa,
-          text: `${makeMessage(n)}\n\nReply *vote* to vote now, or *unsubscribe* to stop updates.`,
+        const first = (statements || [])[0];
+        await pushToAccount(accountId, acct, {
+          title: topic,
+          body: `${n} new statement${n > 1 ? 's' : ''} to vote on${first ? `\n“${first.txt}”` : ''}`,
+          url: topicUrl(zinvite, topic),
+          tag: `t-${zinvite}`,
         });
       }
     }
@@ -1000,540 +1069,6 @@ async function notifyGroup(zinvite, topic, makeMessage, skipPhones, makeSubject,
         emailShell(escHtml(message.replace(/\*/g, '')), htmlBody, emailFooterUnsub(accountId, zinvite))
       );
     }
-  }
-}
-
-// --- WhatsApp voting handler ---
-
-function formatStatement(comment, remaining, total) {
-  const voted = total - remaining;
-  return `📊 *Statement ${voted + 1} of ${total}*\n\n"${comment.txt}"\n\n*Do you agree?* Reply with one letter:\n\n*a* — 👍 agree\n*d* — 👎 disagree\n*p* — ⏭️ pass (skip this one)`;
-}
-
-const VOTE_LABEL = { '-1': '👍 agree', '1': '👎 disagree', '0': '⏭️ pass' };
-
-function formatRevote(state) {
-  const item = state.revoteList[state.revoteIndex];
-  const n = state.revoteIndex + 1;
-  return `🔁 *Reviewing your votes — ${n} of ${state.revoteList.length}*\n\n"${item.txt}"\n\nYour vote: ${VOTE_LABEL[String(item.vote)] || '—'}\n\nReply *a* / *d* / *p* to change it, *k* to keep it, or *done* to finish.`;
-}
-
-function formatTopicList(conversations, joined) {
-  if (conversations.length === 0) {
-    return '📭 No active topics right now. Check back later!';
-  }
-  let msg = '🗳️ *Open Community Topics*\n\n';
-  conversations.forEach((c, i) => {
-    const mark = joined && joined.has(c.zinvite) ? ' ✓' : '';
-    msg += `*${i + 1}.* ${c.topic}${mark}\n`;
-    if (c.description) msg += `   _${c.description.slice(0, 80)}${c.description.length > 80 ? '...' : ''}_\n`;
-    msg += '\n';
-  });
-  msg += 'Reply *vote 1* (or just the number) to vote on topic 1.' +
-    (joined && joined.size ? '\n✓ = topics you follow' : '');
-  return msg;
-}
-
-function formatWelcome() {
-  return `👋 *Welcome to ${BRAND_NAME}!*\n\nVote on community topics right here — your votes stay private.\n\n*topics* — see open topics\n*vote 2* — vote on topic #2\n*my topics* — topics you follow\n*revote* — review & change your votes\n*new* — write your own statement\n*unsubscribe* — stop updates\n\nFollow topics at ${PUBLIC_URL} to get updates here.`;
-}
-
-// Enter a topic with a purpose: 'vote' → first unvoted statement,
-// 'write' → straight to the statement composer. Shared by explicit picks
-// (vote N, numbered reply) and the single-open-topic shortcut.
-async function enterTopic(phone, state, chosen, intent, responses) {
-  const init = await initUserForConversation(phone, chosen.zinvite);
-  state.zinvite = chosen.zinvite;
-  state.topic = chosen.topic;
-  state.token = init.token;
-  state.pid = init.pid;
-  delete state.pendingIntent;
-  if (intent === 'write') {
-    state.phase = 'writing';
-    userState[phone] = state;
-    saveState();
-    responses.push({ text: `✏️ *${chosen.topic}*\n\nType your statement as a single message. Good statements:\n- Start with "I think..." or "The village should..."\n- Are under 140 characters\n- Express one clear idea\n\nType *cancel* to go back.` });
-    return;
-  }
-  if (init.nextComment) {
-    state.phase = 'voting';
-    state.lastTid = init.nextComment.tid;
-    state.lastStatement = init.nextComment.txt;
-    userState[phone] = state;
-    saveState();
-    responses.push({ text: `✅ *Topic:* ${chosen.topic}\n\n${formatStatement(init.nextComment, init.nextComment.remaining, init.nextComment.total)}` });
-  } else {
-    state.phase = 'idle';
-    userState[phone] = state;
-    saveState();
-    responses.push({ text: `✅ *Topic:* ${chosen.topic}\n\n🎉 You've voted on every statement! Type *new* to write your own, or *topics* for another topic.\n\n🔔 Want updates when new statements arrive? Follow this topic at ${topicUrl(chosen.zinvite, chosen.topic)}` });
-  }
-}
-
-// Handle a DM message from a user in the voting flow
-async function handleDM(phone, name, text) {
-  const responses = []; // Array of { text } to send back as DMs
-  const trimmed = text.trim().toLowerCase();
-  const state = userState[phone] || { phase: 'idle' };
-
-  try {
-    // --- Commands that work in any phase ---
-    if (trimmed === 'help' || trimmed === 'commands' || trimmed === '?') {
-      responses.push({ text: formatWelcome() });
-      return responses;
-    }
-
-    if (trimmed === 'topics' || trimmed === 'menu' || trimmed === 'start') {
-      const convos = await getActiveConversations();
-      state.phase = 'choosing';
-      state.conversations = convos;
-      userState[phone] = state;
-      saveState();
-      const joined = new Set();
-      for (const acct of Object.values(webAccounts)) {
-        if (acct.whatsapp && acct.whatsapp === String(phone).replace(/\D/g, '')) {
-          (acct.subs || []).forEach(zz => joined.add(zz));
-        }
-      }
-      if (state.subscribed && state.zinvite) joined.add(state.zinvite);
-      responses.push({ text: formatTopicList(convos, joined) });
-      return responses;
-    }
-
-    if (trimmed === 'stop' || trimmed === 'quit' || trimmed === 'exit') {
-      delete userState[phone];
-      saveState();
-      responses.push({ text: '👋 You\'ve left the voting session. Type *topics* anytime to come back.' });
-      return responses;
-    }
-
-    if (trimmed === 'subscribe' || trimmed === 'notify' || trimmed === 'notifications on') {
-      // Subscriptions are managed on the website (deliberate: one system of
-      // record, and unsubscribing here can't be silently undone in chat).
-      responses.push({ text: `🔔 Updates are managed on the website — follow any topic at ${PUBLIC_URL} and its updates will arrive here.` });
-      return responses;
-    }
-
-    if (trimmed === 'unsubscribe' || trimmed === 'notifications off') {
-      state.subscribed = false;
-      userState[phone] = state;
-      // Also clear any web-hub group memberships tied to this phone
-      for (const acct of Object.values(webAccounts)) {
-        if (acct.whatsapp && acct.whatsapp === String(phone).replace(/\D/g, '')) {
-          acct.subs = [];
-          acct.allTopics = false;
-        }
-      }
-      saveState();
-      responses.push({ text: `🔕 *Unsubscribed.* You won't get any more updates here.\n\nYou can still vote anytime (type *topics*). To get updates again, follow a topic at ${PUBLIC_URL}` });
-      return responses;
-    }
-
-    // vote N — jump straight into topic N from the numbered list
-    const voteN = trimmed.match(/^vote\s+(\d+)$/);
-    if (voteN) {
-      // Prefer the list the user was just shown so numbering can't shift
-      const convos = (state.phase === 'choosing' && state.conversations && state.conversations.length)
-        ? state.conversations
-        : await getActiveConversations();
-      const num = parseInt(voteN[1], 10);
-      if (!(num >= 1 && num <= convos.length)) {
-        responses.push({ text: `There ${convos.length === 1 ? 'is only *1* open topic' : `are *${convos.length}* open topics`} — type *topics* to see the numbered list.` });
-        return responses;
-      }
-      await enterTopic(phone, state, convos[num - 1], 'vote', responses);
-      return responses;
-    }
-
-    // vote / write (bare) — ask WHICH topic, unless only one is open
-    if (['vote', 'voting', 'new', 'write'].includes(trimmed)) {
-      const intent = (trimmed === 'new' || trimmed === 'write') ? 'write' : 'vote';
-      const convos = await getActiveConversations();
-      if (!convos.length) {
-        responses.push({ text: '📭 No open topics right now. Check back later!' });
-        return responses;
-      }
-      if (convos.length === 1) {
-        await enterTopic(phone, state, convos[0], intent, responses);
-        return responses;
-      }
-      state.phase = 'choosing';
-      state.conversations = convos;
-      state.pendingIntent = intent;
-      userState[phone] = state;
-      saveState();
-      const joined = new Set();
-      for (const acct of Object.values(webAccounts)) {
-        if (acct.whatsapp && acct.whatsapp === String(phone).replace(/\D/g, '')) {
-          (acct.subs || []).forEach(zz => joined.add(zz));
-        }
-      }
-      let msg = intent === 'write'
-        ? '✏️ *Which topic do you want to write a statement in?*\n\n'
-        : '🗳️ *Which topic do you want to vote on?*\n\n';
-      convos.forEach(function (c, i) {
-        msg += `*${i + 1}.* ${c.topic}${joined.has(c.zinvite) ? ' ✓' : ''}\n`;
-      });
-      msg += '\nReply with the number.';
-      responses.push({ text: msg });
-      return responses;
-    }
-
-    // my topics — the topics this person follows
-    if (trimmed === 'my topics' || trimmed === 'mytopics') {
-      const mine = new Set();
-      for (const acct of Object.values(webAccounts)) {
-        if (acct.whatsapp && acct.whatsapp === String(phone).replace(/\D/g, '')) {
-          (acct.subs || []).forEach(z => mine.add(z));
-        }
-      }
-      if (state.subscribed && state.zinvite) mine.add(state.zinvite);
-      if (!mine.size) {
-        responses.push({ text: `You're not following any topics yet.\n\nType *topics* to see what's open, or follow topics at ${PUBLIC_URL} to get updates here.` });
-        return responses;
-      }
-      const convos = await getActiveConversations();
-      let msg = '📌 *Your topics*\n\n';
-      for (const z of mine) {
-        const c = convos.find(cc => cc.zinvite === z);
-        if (c) msg += `• ${c.topic}\n  ${topicUrl(z, c.topic)}\n`;
-      }
-      msg += '\nType *topics* for all open topics, or *vote N* to vote on topic N.';
-      responses.push({ text: msg });
-      return responses;
-    }
-
-    // revote — review past votes one by one and change any of them
-    if (trimmed === 'revote' || trimmed === 'review') {
-      if (!state.zinvite) {
-        responses.push({ text: 'Pick a topic first — type *topics* to see what\'s open.' });
-        return responses;
-      }
-      const z = state.zinvite;
-      const init = await initUserForConversation(phone, z);
-      if (init.token) state.token = init.token;
-      const voted = init.votes || [];
-      if (!voted.length) {
-        responses.push({ text: 'You haven\'t voted on anything in this topic yet. Type *vote* to start.' });
-        return responses;
-      }
-      const comments = await getComments(state.token, z);
-      const byTid = {};
-      comments.forEach(c => { byTid[c.tid] = c.txt; });
-      state.zinvite = z;
-      state.phase = 'revoting';
-      state.revoteList = voted
-        .filter(v => byTid[v.tid] !== undefined)
-        .map(v => ({ tid: v.tid, vote: v.vote, txt: byTid[v.tid] }));
-      state.revoteIndex = 0;
-      userState[phone] = state;
-      saveState();
-      responses.push({ text: formatRevote(state) });
-      return responses;
-    }
-
-    if (trimmed === 'status') {
-      if (state.zinvite && state.token) {
-        const init = await initUserForConversation(phone, state.zinvite);
-        const voted = init.votes ? init.votes.length : 0;
-        const total = init.nextComment ? voted + init.nextComment.remaining + 1 : voted;
-        responses.push({ text: `📊 *Your progress:* ${voted}/${total} statements voted on\n\nTopic: _${state.topic || 'Unknown'}_\n\nType *vote* to continue or *topics* to switch.` });
-      } else {
-        responses.push({ text: 'You\'re not in a voting session. Type *topics* to get started.' });
-      }
-      return responses;
-    }
-
-    // --- Phase: choosing a topic ---
-    if (state.phase === 'choosing') {
-      const num = parseInt(trimmed);
-      if (num >= 1 && num <= (state.conversations || []).length) {
-        await enterTopic(phone, state, state.conversations[num - 1],
-          state.pendingIntent || 'vote', responses);
-        return responses;
-      }
-      // Not a valid number
-      responses.push({ text: 'Please reply with a topic number, or type *topics* to see the list again.' });
-      return responses;
-    }
-
-    // --- Phase: reviewing past votes ---
-    if (state.phase === 'revoting' && state.revoteList && state.token) {
-      const item = state.revoteList[state.revoteIndex];
-      const advance = () => {
-        state.revoteIndex++;
-        if (state.revoteIndex >= state.revoteList.length) {
-          state.phase = state.lastTid !== undefined ? 'voting' : 'idle';
-          delete state.revoteList;
-          delete state.revoteIndex;
-          userState[phone] = state;
-          saveState();
-          responses.push({ text: '✅ *That\'s all your votes — review done!*\n\nType *vote* to continue voting, or *topics* to switch topics.' });
-          return true;
-        }
-        userState[phone] = state;
-        saveState();
-        responses.push({ text: formatRevote(state) });
-        return false;
-      };
-
-      if (trimmed === 'done' || trimmed === 'cancel' || trimmed === 'stop review') {
-        state.phase = state.lastTid !== undefined ? 'voting' : 'idle';
-        delete state.revoteList;
-        delete state.revoteIndex;
-        userState[phone] = state;
-        saveState();
-        responses.push({ text: 'Review closed. Type *vote* to continue voting, or *topics* to switch topics.' });
-        return responses;
-      }
-      if (['k', 'keep', 'next', 'skip'].includes(trimmed)) {
-        advance();
-        return responses;
-      }
-      let newVote = null;
-      if (['agree', 'yes', 'a', '👍', 'y'].includes(trimmed)) newVote = -1;
-      else if (['disagree', 'no', 'd', '👎', 'n'].includes(trimmed)) newVote = 1;
-      else if (['pass', 'p', '⏭️', '⏭'].includes(trimmed)) newVote = 0;
-      if (newVote !== null) {
-        if (newVote !== item.vote) {
-          await vote(state.token, state.zinvite, item.tid, newVote);
-          item.vote = newVote;
-          responses.push({ text: `Changed to ${VOTE_LABEL[String(newVote)]}.` });
-        }
-        advance();
-        return responses;
-      }
-      responses.push({ text: 'Reply *a* / *d* / *p* to change this vote, *k* to keep it, or *done* to finish.' });
-      return responses;
-    }
-
-    // --- Phase: voting ---
-    if (state.phase === 'voting' && state.token && state.lastTid !== undefined) {
-      let voteValue = null;
-      // Polis stores agree as -1 and disagree as +1 (see server report.ts)
-      if (['agree', 'yes', 'a', '👍', 'y', '1'].includes(trimmed)) voteValue = -1;
-      else if (['disagree', 'no', 'd', '👎', 'n', '-1'].includes(trimmed)) voteValue = 1;
-      else if (['skip', 'pass', 's', '⏭️', '⏭', 'p', '0'].includes(trimmed)) voteValue = 0;
-      // (bare "vote"/"new" are handled earlier — they open the topic picker)
-
-      if (voteValue !== null) {
-        // Pin the conversation for this exchange — background notifiers may
-        // retarget state.zinvite while we await, and tids are per-conversation.
-        const z = state.zinvite;
-        const tid = state.lastTid;
-        let result;
-        try {
-          result = await vote(state.token, z, tid, voteValue);
-        } catch (e) {
-          // Stale/expired participant token (or Polis restart) — re-mint via
-          // XID and retry once instead of wedging the session forever.
-          try {
-            const init = await initUserForConversation(phone, z);
-            if (init.token) state.token = init.token;
-            result = await vote(state.token, z, tid, voteValue);
-            userState[phone] = state;
-            saveState();
-          } catch (e2) {
-            state.phase = 'idle';
-            state.lastTid = undefined;
-            state.lastStatement = undefined;
-            userState[phone] = state;
-            saveState();
-            responses.push({ text: '⚠️ That vote didn\'t go through — the session was stale. Type *vote* to pick up where you left off.' });
-            return responses;
-          }
-        }
-        // Polis convention: -1 = agree, +1 = disagree
-        const label = voteValue === -1 ? '👍 Agreed' : voteValue === 1 ? '👎 Disagreed' : '⏭️ Skipped';
-
-        if (result.nextComment) {
-          state.lastTid = result.nextComment.tid;
-          state.lastStatement = result.nextComment.txt;
-          saveState();
-          responses.push({ text: `${label}\n\n${formatStatement(result.nextComment, result.nextComment.remaining, result.nextComment.total)}` });
-        } else {
-          state.lastTid = undefined;
-          state.lastStatement = undefined;
-          state.phase = 'idle';
-          saveState();
-          responses.push({ text: `${label}\n\n🎉 *You've voted on all statements!*\n\nType *new* to write your own statement, or *topics* for another topic.\n\n🔔 Want updates when new statements arrive? Follow this topic at ${topicUrl(z, state.topic)}` });
-        }
-        return responses;
-      }
-
-      // Unrecognized vote input
-      responses.push({ text: 'To vote on the statement above, reply with one letter:\n\n*a* — 👍 agree\n*d* — 👎 disagree\n*p* — ⏭️ pass\n\nOr type *new* to write your own statement, or *stop* to leave.' });
-      return responses;
-    }
-
-    // --- Phase: writing a statement ---
-    if (state.phase === 'writing' && state.token) {
-      if (trimmed === 'cancel' || trimmed === 'back') {
-        state.phase = 'voting';
-        userState[phone] = state;
-        saveState();
-        // Re-init to get the next comment
-        const init = await initUserForConversation(phone, state.zinvite);
-        if (init.nextComment) {
-          state.lastTid = init.nextComment.tid;
-          state.lastStatement = init.nextComment.txt;
-          saveState();
-          responses.push({ text: `Back to voting!\n\n${formatStatement(init.nextComment, init.nextComment.remaining, init.nextComment.total)}` });
-        } else {
-          responses.push({ text: 'Back to voting — but you\'ve voted on everything! Type *topics* for another topic.' });
-        }
-        return responses;
-      }
-
-      // Submit the statement
-      const result = await submitComment(state.token, state.zinvite, text.trim());
-      // Skip this author's next new-statement alert — it would be their own.
-      recentAuthors[`${phone}|${state.zinvite}`] = Date.now();
-      state.phase = 'voting';
-      userState[phone] = state;
-      saveState();
-
-      // Get next comment
-      const init = await initUserForConversation(phone, state.zinvite);
-      let followUp = '';
-      if (init.nextComment) {
-        state.lastTid = init.nextComment.tid;
-        state.lastStatement = init.nextComment.txt;
-        saveState();
-        followUp = `\n\n${formatStatement(init.nextComment, init.nextComment.remaining, init.nextComment.total)}`;
-      }
-      responses.push({ text: `✅ *Statement submitted!* It will appear for others to vote on after moderation.${followUp}` });
-      return responses;
-    }
-
-    // (bare "vote"/"new" are handled in the any-phase section above)
-
-    // Default: show welcome/help
-    responses.push({ text: formatWelcome() });
-    return responses;
-
-  } catch (err) {
-    console.error('DM handler error:', err.message);
-    responses.push({ text: '⚠️ Something went wrong. Type *topics* to start over.' });
-    return responses;
-  }
-}
-
-// Handle a group message (show topics, instructions)
-// Responses can have { text } (reply in group) or { text, dmPhone } (send as DM)
-async function handleGroup(phone, name, text) {
-  const responses = [];
-  const trimmed = text.trim().toLowerCase();
-
-  try {
-    if (trimmed === 'topics' || trimmed === 'vote' || trimmed === 'start') {
-      const convos = await getActiveConversations();
-      // Store conversations for this user so they can pick by number
-      userState[phone] = userState[phone] || { phase: 'idle' };
-      userState[phone].conversations = convos;
-      userState[phone].phase = 'choosing';
-      saveState();
-
-      let msg = '🗳️ *Active Community Topics*\n\n';
-      convos.forEach((c, i) => {
-        msg += `*${i + 1}.* ${c.topic}\n`;
-      });
-      msg += '\nReply with the *number* to start voting.';
-      responses.push({ text: msg });
-      return responses;
-    }
-
-    // User picks a topic number — initiate DM with first statement
-    const state = userState[phone] || {};
-    if (state.phase === 'choosing' && state.conversations) {
-      const num = parseInt(trimmed);
-      if (num >= 1 && num <= state.conversations.length) {
-        const chosen = state.conversations[num - 1];
-        const init = await initUserForConversation(phone, chosen.zinvite);
-        state.zinvite = chosen.zinvite;
-        state.topic = chosen.topic;
-        state.token = init.token;
-        state.pid = init.pid;
-        state.phase = 'voting';
-        state.subscribed = true; // Auto-subscribe when picking a topic
-        userState[phone] = state;
-        saveState();
-
-        // DM only — the group must not reveal who is voting.
-        // DM the user with the first statement
-        if (init.nextComment) {
-          state.lastTid = init.nextComment.tid;
-          state.lastStatement = init.nextComment.txt;
-          saveState();
-          responses.push({
-            text: `🗳️ *Topic:* ${chosen.topic}\n\n${formatStatement(init.nextComment, init.nextComment.remaining, init.nextComment.total)}`,
-            dmPhone: phone,
-          });
-        } else {
-          responses.push({
-            text: `🗳️ *Topic:* ${chosen.topic}\n\n🎉 You've already voted on all statements! Type *new* to write your own.`,
-            dmPhone: phone,
-          });
-        }
-        return responses;
-      }
-    }
-
-    // Any other message — brief help
-    responses.push({ text: '🗳️ Type *topics* to see active discussions and start voting!' });
-    return responses;
-
-  } catch (err) {
-    console.error('Group handler error:', err.message);
-    responses.push({ text: '⚠️ Something went wrong. Try again.' });
-    return responses;
-  }
-}
-
-// Handle a message inside a per-topic community subgroup: no menus — any
-// voting intent starts (or resumes) a DM session on THIS topic.
-async function handleTopicGroup(phone, name, text, zinvite) {
-  const responses = [];
-  const trimmed = text.trim().toLowerCase();
-  try {
-    if (['vote', 'voting', 'topics', 'start', 'help'].includes(trimmed)) {
-      const state = userState[phone] || { phase: 'idle' };
-      const init = await initUserForConversation(phone, zinvite);
-      state.zinvite = zinvite;
-      if (init.conversation && init.conversation.topic) state.topic = init.conversation.topic;
-      state.token = init.token;
-      state.pid = init.pid;
-      state.subscribed = true; // voting from the topic group implies interest
-      if (init.nextComment) {
-        state.phase = 'voting';
-        state.lastTid = init.nextComment.tid;
-        state.lastStatement = init.nextComment.txt;
-        userState[phone] = state;
-        saveState();
-        // DM only — never confirm in the group. Voting participation is
-        // private; the group must not reveal who is voting.
-        responses.push({
-          text: `🗳️ *${state.topic || 'This topic'}*\n\n${formatStatement(init.nextComment, init.nextComment.remaining, init.nextComment.total)}`,
-          dmPhone: phone,
-        });
-      } else {
-        state.phase = 'idle';
-        userState[phone] = state;
-        saveState();
-        responses.push({
-          text: `🎉 You've voted on every statement here! Type *new* to write your own statement.`,
-          dmPhone: phone,
-        });
-      }
-      return responses;
-    }
-
-    // Anything else is people talking to each other — stay silent.
-    return responses;
-  } catch (err) {
-    console.error('Topic group handler error:', err.message);
-    responses.push({ text: '⚠️ Something went wrong. Try again in a moment.' });
-    return responses;
   }
 }
 
@@ -1586,22 +1121,20 @@ async function handleClosedTopics(activeNow) {
       const digest = await buildTopicDigest(z, topic);
       const closeMsg = `🏁 *This topic has closed.* Thank you for voting!\n\n${digest}\n\nFull results: ${topicUrl(z, topic)}`;
 
-      // Its community subgroup: final message + [closed] rename
-      if (waTopicGroups[z]) {
-        pendingNotifications.push({ phone: waTopicGroups[z], text: closeMsg });
-        pendingNotifications.push({
-          action: 'rename-group',
-          jid: waTopicGroups[z],
-          subject: `[closed] ${topic}`.slice(0, 80),
-        });
-        delete waTopicGroups[z];
-      }
+      // Its WhatsApp subgroup and DM sessions
+      wa?.topicClosed(z, topic, closeMsg);
 
       // Followers: digest on every verified channel, then prune the sub
       for (const [accountId, acct] of accountsFollowing(z)) {
-        const wa = acctWhatsapp(acct);
+        const phone = acctWhatsapp(acct);
         const em = acctEmail(acct);
-        if (wa) pendingNotifications.push({ phone: wa, text: closeMsg });
+        if (phone) wa.dm(phone, closeMsg);
+        await pushToAccount(accountId, acct, {
+          title: `Closed: ${topic}`,
+          body: 'Thank you for voting. See where the community landed.',
+          url: topicUrl(z, topic),
+          tag: `t-${z}`,
+        });
         if (em) {
           await sendEmail(
             em,
@@ -1618,14 +1151,6 @@ async function handleClosedTopics(activeNow) {
         }
         acct.subs = (acct.subs || []).filter(s => s !== z);
       }
-
-      // Idle out any DM sessions parked on this topic
-      for (const st of Object.values(userState)) {
-        if (st.zinvite === z) {
-          st.subscribed = false;
-          if (st.phase === 'voting' || st.phase === 'revoting') st.phase = 'idle';
-        }
-      }
     } catch (e) {
       console.error(`Close lifecycle failed for ${z}:`, e.message);
     }
@@ -1636,29 +1161,6 @@ async function handleClosedTopics(activeNow) {
   saveState();
 }
 
-// --- Per-topic community subgroups ---
-
-// Ask wireclaw (via the notification action channel) to create a community
-// subgroup for every active topic that doesn't have one yet.
-function syncTopicGroups(convos) {
-  if (!WA_COMMUNITY_JID) return;
-  for (const conv of convos) {
-    if (!conv.zinvite || waTopicGroups[conv.zinvite]) continue;
-    const asked = waTopicGroupRequests[conv.zinvite] || 0;
-    if (Date.now() - asked < 30 * 60000) continue; // re-ask at most every 30 min
-    waTopicGroupRequests[conv.zinvite] = Date.now();
-    pendingNotifications.push({
-      action: 'create-topic-group',
-      zinvite: conv.zinvite,
-      topic: conv.topic,
-      communityJid: WA_COMMUNITY_JID,
-      webhookUrl: `http://localhost:${PORT}/wa/group`,
-      reportUrl: `http://localhost:${PORT}/wa/topic-group`,
-    });
-    console.log(`Requested topic subgroup for ${conv.zinvite} "${conv.topic}"`);
-  }
-  saveState();
-}
 
 // --- New statement notification checker ---
 
@@ -1666,7 +1168,7 @@ async function checkForNewStatements() {
   try {
     const convos = await getActiveConversations();
     await handleClosedTopics(convos);
-    syncTopicGroups(convos);
+    wa?.syncTopicGroups(convos);
     for (const conv of convos) {
       if (!conv.zinvite) continue;
 
@@ -1686,19 +1188,8 @@ async function checkForNewStatements() {
         const newCount = currentCount - lastKnown;
         console.log(`New statements detected: ${newCount} new in ${conv.zinvite}`);
 
-        // Legacy per-phone subscriptions (WhatsApp DM flow)
-        const notifiedPhones = [];
-        for (const [phone, state] of Object.entries(userState)) {
-          if (state.subscribed && state.zinvite === conv.zinvite) {
-            notifiedPhones.push(phone); // counts for dedupe even when cooling down
-            const n = notifyCount(phone, conv.zinvite, newCount);
-            if (!n) continue;
-            pendingNotifications.push({
-              phone,
-              text: `🔔 *${n} new statement${n > 1 ? 's' : ''}* to vote on!\n\n_${conv.topic}_\n\nType *vote* to continue voting.`,
-            });
-          }
-        }
+        // WhatsApp DM sessions and the topic's subgroup, when the bridge is on
+        const notifiedPhones = wa ? wa.newStatements(conv, newCount, notifyCount) : [];
 
         // The newest statements themselves (for one-click email voting)
         let newStatements = [];
@@ -1721,18 +1212,6 @@ async function checkForNewStatements() {
           newStatements,
           newCount
         );
-
-        // Statement alerts go ONLY to the topic's own subgroup — the
-        // Announcements feed is reserved for new topics. Voting is private:
-        // point people to DM or the website, never a public group reply.
-        const gJid = waTopicGroups[conv.zinvite];
-        const gCount = gJid ? notifyCount(gJid, conv.zinvite, newCount) : 0;
-        if (gCount) {
-          pendingNotifications.push({
-            phone: gJid,
-            text: `🔔 *${gCount} new statement${gCount > 1 ? 's' : ''}* to vote on in this topic.\n\nVoting is private — send me *vote* in a direct message, or vote anonymously at ${topicUrl(conv.zinvite, conv.topic)}`,
-          });
-        }
       }
 
       conversationCommentCounts[conv.zinvite] = currentCount;
@@ -1763,7 +1242,8 @@ async function runNudgeSweep() {
       if (acct.verified === false) continue;
       const subs = (acct.subs || []).filter(z => byZ[z]);
       if (!subs.length) continue;
-      if (now - (nudgeLog[acct.contact] || 0) < 7 * 24 * 3600000) continue;
+      const nudgeKey = acct.contact || accountId;
+      if (now - (nudgeLog[nudgeKey] || 0) < 7 * 24 * 3600000) continue;
       // Only accounts with an established identity — the sweep must never
       // mint one (see accountXid durability rule).
       const sweepXid = accountXid(accountId);
@@ -1777,20 +1257,18 @@ async function runNudgeSweep() {
         } catch {}
       }
       if (!backlog.length) continue;
-      nudgeLog[acct.contact] = now;
+      nudgeLog[nudgeKey] = now;
       const total = backlog.reduce((s, b) => s + b.unvoted, 0);
       backlog.sort((a, b) => b.unvoted - a.unvoted);
       const nWa = acctWhatsapp(acct);
       const nEm = acctEmail(acct);
-      if (nWa) {
-        let text = `👋 You have *${total} statement${total > 1 ? 's' : ''}* waiting for your vote:\n`;
-        backlog.forEach(b => { text += `\n• ${b.topic} — ${b.unvoted}`; });
-        text += `\n\nReply *vote* to catch up, or *unsubscribe* to stop updates.`;
-        const st = userState[nWa] || { phase: 'idle' };
-        if (!st.zinvite || st.phase === 'idle') { st.zinvite = backlog[0].z; st.topic = backlog[0].topic; }
-        userState[nWa] = st;
-        pendingNotifications.push({ phone: nWa, text });
-      }
+      if (nWa) wa.nudge(nWa, backlog, total);
+      await pushToAccount(accountId, acct, {
+        title: `${total} statement${total > 1 ? 's' : ''} waiting for your vote`,
+        body: backlog.map(b => `${b.topic} — ${b.unvoted}`).join('\n'),
+        url: topicUrl(backlog[0].z, backlog[0].topic),
+        tag: 'nudge',
+      });
       if (nEm) {
         let bodyTxt = `You have ${total} statement${total > 1 ? 's' : ''} waiting for your vote:\n`;
         backlog.forEach(b => { bodyTxt += `\n${b.topic} (${b.unvoted} unvoted): ${topicUrl(b.z, b.topic)}`; });
@@ -1832,12 +1310,19 @@ petitions.init({
   PLACE: process.env.POLIS_PETITION_PLACE || 'Croton-on-Hudson',
   escHtml, pageShell, cleanText, clientIp, hashIp,
   sendEmail, emailShell, emailButton, emailQuote, unsubscribeLink,
-  acctEmail, acctWhatsapp,
+  acctEmail, acctWhatsapp, pushToAccount,
   getAccount: (id) => (id ? webAccounts[id] : undefined),
   allAccounts: () => webAccounts,
-  queueWa: (n) => { pendingNotifications.push(n); saveState(); },
-  WA_ANNOUNCE_JID: () => WA_ANNOUNCE_JID,
+  queueWa: (n) => { if (wa) { wa.dm(n.phone, n.text); saveState(); } },
+  WA_ANNOUNCE_JID: () => (wa ? wa.announceJid() : ''),
   LINK_SECRET: () => LINK_SECRET,
+});
+
+wa?.init({
+  data: waData, BRAND_NAME, PUBLIC_URL, PORT,
+  saveState, readBody, getActiveConversations, initByXid, vote, getComments, submitComment, topicUrl,
+  accounts: () => webAccounts,
+  markAuthor: (phone, zinvite) => { recentAuthors[`${phone}|${zinvite}`] = Date.now(); },
 });
 
 // --- HTTP Server ---
@@ -1998,92 +1483,8 @@ const server = http.createServer(async (req, res) => {
       return res.end(JSON.stringify(convos));
     }
 
-    // POST /wa/group — handle group message. Messages from a per-topic
-    // subgroup are scoped straight to that topic; other groups get the menu.
-    if (req.method === 'POST' && req.url === '/wa/group') {
-      const body = await readBody(req);
-      if (!body.phone || !body.text) {
-        res.writeHead(400);
-        return res.end(JSON.stringify({ error: 'phone and text required' }));
-      }
-      const zinvite = body.chatJid &&
-        Object.keys(waTopicGroups).find(z => waTopicGroups[z] === body.chatJid);
-      const responses = zinvite
-        ? await handleTopicGroup(body.phone, body.name || '', body.text, zinvite)
-        : await handleGroup(body.phone, body.name || '', body.text);
-      res.writeHead(200);
-      return res.end(JSON.stringify({ responses }));
-    }
-
-    // POST /wa/topic-group — wireclaw reports a created topic subgroup
-    if (req.method === 'POST' && req.url === '/wa/topic-group') {
-      const body = await readBody(req);
-      if (!body.zinvite || !body.jid) {
-        res.writeHead(400);
-        return res.end(JSON.stringify({ error: 'zinvite and jid required' }));
-      }
-      waTopicGroups[body.zinvite] = body.jid;
-      delete waTopicGroupRequests[body.zinvite];
-      saveState();
-      console.log(`Topic subgroup mapped: ${body.zinvite} -> ${body.jid}`);
-      res.writeHead(200);
-      return res.end(JSON.stringify({ ok: true }));
-    }
-
-    // POST /wa/dm — handle DM message
-    if (req.method === 'POST' && req.url === '/wa/dm') {
-      const body = await readBody(req);
-      if (!body.phone || !body.text) {
-        res.writeHead(400);
-        return res.end(JSON.stringify({ error: 'phone and text required' }));
-      }
-      const responses = await handleDM(body.phone, body.name || '', body.text);
-      res.writeHead(200);
-      return res.end(JSON.stringify({ responses }));
-    }
-
-    // GET /wa/pending-notifications — returns and clears pending DM notifications
-    if (req.method === 'GET' && req.url === '/wa/pending-notifications') {
-      const notifications = pendingNotifications.splice(0);
-      if (notifications.length) saveState();
-      res.writeHead(200);
-      return res.end(JSON.stringify({ notifications }));
-    }
-
-    // POST /wa/notify — accept notifications from external services (e.g., router)
-    if (req.method === "POST" && req.url === "/wa/notify") {
-      let body = "";
-      req.on("data", c => body += c);
-      req.on("end", () => {
-        try {
-          const n = JSON.parse(body);
-          if ((n.phone && n.text) || n.action) {
-            pendingNotifications.push(n);
-            saveState();
-            res.writeHead(200);
-            res.end(JSON.stringify({ ok: true }));
-          } else {
-            res.writeHead(400);
-            res.end(JSON.stringify({ error: "phone and text required" }));
-          }
-        } catch {
-          res.writeHead(400);
-          res.end(JSON.stringify({ error: "invalid JSON" }));
-        }
-      });
-      return;
-    }
-
-    // GET /wa/state/:phone — get user's voting state (used by the router
-    // bridge to detect active sessions). WhatsApp identities aren't always
-    // bare digits — LID users arrive as "12345…@lid" — so accept any single
-    // path segment.
-    const stateMatch = req.url?.match(/^\/wa\/state\/([^/]+)$/);
-    if (req.method === 'GET' && stateMatch) {
-      const phone = decodeURIComponent(stateMatch[1]);
-      res.writeHead(200);
-      return res.end(JSON.stringify(userState[phone] || { phase: 'idle' }));
-    }
+    // WhatsApp bridge routes (/wa/*), when it is on — loopback only.
+    if (wa && await wa.handle(req, res)) return;
 
     // --- Public web hub routes (the ONLY ones nginx exposes to the internet) ---
 
@@ -2241,10 +1642,7 @@ const server = http.createServer(async (req, res) => {
       bugReportLog[ipKey].push(Date.now());
 
       const report = `🐞 *Bug report*\n\n${text.trim()}\n\n${contact ? `From: ${contact}` : '(no contact left)'}`;
-      if (WA_SUPPORT_JID) {
-        pendingNotifications.push({ phone: WA_SUPPORT_JID, text: report });
-        saveState();
-      }
+      if (wa) { wa.support(report); saveState(); }
       await sendEmail(
         BUG_EMAIL,
         `Bug report — ${BRAND_NAME}`,
@@ -2448,9 +1846,10 @@ const server = http.createServer(async (req, res) => {
 
       // Dual contacts: either or both. (Legacy single channel/contact bodies
       // are mapped in.) Each must be proven by its own clickthrough link
-      // before it is used for anything.
+      // before it is used for anything. With the WhatsApp bridge off, a
+      // number in the body is ignored: neither added nor removed.
       let email = cleanText(body.email || (body.channel === 'email' ? body.contact : ''), 120, true).toLowerCase();
-      let whatsapp = cleanText(body.whatsapp || (body.channel === 'whatsapp' ? body.contact : ''), 40, true).replace(/[^\d]/g, '');
+      let whatsapp = wa ? cleanText(body.whatsapp || (body.channel === 'whatsapp' ? body.contact : ''), 40, true).replace(/[^\d]/g, '') : '';
       if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
         res.writeHead(400);
         return res.end(JSON.stringify({ error: 'Please enter a valid email address.' }));
@@ -2462,9 +1861,9 @@ const server = http.createServer(async (req, res) => {
           return res.end(JSON.stringify({ error: 'Please enter a valid WhatsApp number (with area code).' }));
         }
       }
-      if (!email && !whatsapp) {
+      if (!email && !whatsapp && !(webAccounts[body.previousAccountId] || {}).devices?.length) {
         res.writeHead(400);
-        return res.end(JSON.stringify({ error: 'Enter an email address, a WhatsApp number, or both.' }));
+        return res.end(JSON.stringify({ error: wa ? 'Enter an email address, a WhatsApp number, or both.' : 'Enter an email address.' }));
       }
 
       const contacts = [];
@@ -2481,8 +1880,8 @@ const server = http.createServer(async (req, res) => {
         if (body.allTopics !== undefined) prevAcct.allTopics = !!body.allTopics;
         // Removals: a cleared field means "drop this channel"
         if (prevAcct.email && !email) { prevAcct.email = null; prevAcct.emailVerified = false; }
-        if (prevAcct.whatsapp && !whatsapp) { prevAcct.whatsapp = null; prevAcct.whatsappVerified = false; }
-        if (!prevAcct.email && !prevAcct.whatsapp && !contacts.length) {
+        if (wa && prevAcct.whatsapp && !whatsapp) { prevAcct.whatsapp = null; prevAcct.whatsappVerified = false; }
+        if (!prevAcct.email && !acctWhatsapp(prevAcct) && !(prevAcct.devices || []).length && !contacts.length) {
           res.writeHead(400);
           return res.end(JSON.stringify({ error: 'Keep at least one way to reach you.' }));
         }
@@ -2490,8 +1889,7 @@ const server = http.createServer(async (req, res) => {
           c.channel === 'email'
             ? (prevAcct.email === c.contact && prevAcct.emailVerified)
             : (prevAcct.whatsapp === c.contact && prevAcct.whatsappVerified)));
-        prevAcct.channel = prevAcct.whatsappVerified && !prevAcct.emailVerified ? 'whatsapp' : (prevAcct.email ? 'email' : 'whatsapp');
-        prevAcct.contact = prevAcct.channel === 'email' ? prevAcct.email : prevAcct.whatsapp;
+        settleChannel(prevAcct);
         saveState();
         if (!needs.length) {
           // Pure profile edit — done, no verification round-trip
@@ -2520,10 +1918,7 @@ const server = http.createServer(async (req, res) => {
               return res.end(JSON.stringify({ error: 'Couldn’t send the confirmation email — please try again shortly.' }));
             }
           } else {
-            pendingNotifications.push({
-              phone: c.contact,
-              text: `👋 Tap to *link this number* to ${who} for updates:\n\n${link}\n\nIf this isn't you, or you don't recognize the account, ignore this message — nothing will change. The link expires in 30 minutes.`,
-            });
+            wa.dm(c.contact, `👋 Tap to *link this number* to ${who} for updates:\n\n${link}\n\nIf this isn't you, or you don't recognize the account, ignore this message — nothing will change. The link expires in 30 minutes.`);
           }
         }
         pendingVerifications[claimId2] = pending2;
@@ -2571,10 +1966,7 @@ const server = http.createServer(async (req, res) => {
             return res.end(JSON.stringify({ error: 'Couldn’t send the confirmation email — please try again shortly.' }));
           }
         } else {
-          pendingNotifications.push({
-            phone: c.contact,
-            text: `👋 Tap to confirm your ${BRAND_NAME} account:\n\n${link}\n\nThe link expires in 30 minutes. If you didn't request this, ignore this message.`,
-          });
+          wa.dm(c.contact, `👋 Tap to confirm your ${BRAND_NAME} account:\n\n${link}\n\nThe link expires in 30 minutes. If you didn't request this, ignore this message.`);
         }
       }
 
@@ -2835,6 +2227,161 @@ submit(BOOT);
       return res.end(JSON.stringify(payload));
     }
 
+    // GET /public/push-key — the VAPID public key browsers subscribe with
+    if (req.method === 'GET' && req.url === '/public/push-key') {
+      res.writeHead(200, { 'Cache-Control': 'public, max-age=3600' });
+      return res.end(JSON.stringify({ publicKey: pusher.publicKey }));
+    }
+
+    // POST /public/push — notifications on this device, in one tap.
+    // { subscription, accountId?, name?, zinvite?, allTopics?, xid? }
+    // Adds this browser's push subscription to the account, or — with no
+    // account — to the account that already has it, or a new account (no
+    // email, no number, no confirmation link). Also re-sent quietly on page
+    // load, so changed keys and moved accounts heal on their own.
+    if (req.method === 'POST' && req.url === '/public/push') {
+      const body = await readBody(req);
+      if (body.website) { res.writeHead(200); return res.end(JSON.stringify({ ok: true })); }
+      const sub = body.subscription;
+      if (!push.validSubscription(sub)) {
+        res.writeHead(400);
+        return res.end(JSON.stringify({ error: 'This browser can’t receive notifications from us. Try email instead.' }));
+      }
+      const ipKey = hashIp(clientIp(req));
+      if (throttled(pushLog, ipKey, 120, 3600000)) {
+        res.writeHead(429);
+        return res.end(JSON.stringify({ error: 'Too many tries from this connection — wait a little and try again.' }));
+      }
+      if (body.accountId && !webAccounts[body.accountId]) {
+        res.writeHead(404);
+        return res.end(JSON.stringify({ error: 'Unknown account.' }));
+      }
+      const holder = findDevice(sub.endpoint);
+      // A subscription already on an account is only taken (adopted, moved,
+      // or re-keyed) by the browser that holds it: the same auth secret,
+      // which never leaves that browser, the push service, and us. The
+      // account's own holder (its accountId) may always update its device.
+      if (holder && holder !== body.accountId) {
+        const held = webAccounts[holder].devices.find(d => d.endpoint === sub.endpoint);
+        const a = Buffer.from(String(held.auth)), b = Buffer.from(String(sub.keys.auth));
+        if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+          res.writeHead(403);
+          return res.end(JSON.stringify({ error: 'This notification subscription belongs to another device.' }));
+        }
+      }
+      let accountId = body.accountId || holder;
+      // The same browser, signed in to a different account now: the device
+      // moves with it.
+      if (holder && holder !== accountId) dropDevice(holder, d => d.endpoint === sub.endpoint);
+      let created = false;
+      if (!accountId) {
+        if (throttled(pushAccountLog, ipKey, 60, 24 * 3600000)) { // a meeting on one Wi-Fi
+          res.writeHead(429);
+          return res.end(JSON.stringify({ error: 'That’s a lot of new sign-ups from this connection today. Try again tomorrow.' }));
+        }
+        accountId = crypto.randomBytes(16).toString('base64url');
+        created = true;
+        webAccounts[accountId] = {
+          name: cleanText(body.name, 60, true), subs: [], allTopics: !!body.allTopics,
+          email: null, whatsapp: null, emailVerified: false, whatsappVerified: false,
+          verified: true, devices: [], created: new Date().toISOString(),
+        };
+      }
+      const acct = webAccounts[accountId];
+      acct.devices = acct.devices || [];
+      let device = acct.devices.find(d => d.endpoint === sub.endpoint);
+      const isNew = !device;
+      if (isNew) {
+        device = { id: deviceIdOf(sub.endpoint), endpoint: sub.endpoint, created: new Date().toISOString() };
+        acct.devices.push(device);
+        if (acct.devices.length > MAX_DEVICES) acct.devices.splice(0, acct.devices.length - MAX_DEVICES);
+      }
+      device.p256dh = sub.keys.p256dh;
+      device.auth = sub.keys.auth;
+      device.platform = push.platformOf(sub.endpoint, req.headers['user-agent']);
+      if (!created && body.allTopics !== undefined) acct.allTopics = !!body.allTopics;
+      const z = typeof body.zinvite === 'string' && /^[0-9a-z]+$/i.test(body.zinvite) ? body.zinvite : null;
+      if (z) {
+        acct.subs = acct.subs || [];
+        if (!acct.subs.includes(z)) acct.subs.push(z);
+      }
+      // This browser's voting identity becomes the account's, unless the
+      // account already has a real one (see accountXid durability rule).
+      if (typeof body.xid === 'string' && /^web:[0-9a-f-]{36}$/.test(body.xid) && (!acct.xid || isSyntheticXid(acct.xid))) {
+        setAccountXid(accountId, body.xid, created ? 'push-signup' : 'push-browser-xid');
+      }
+      acct.verified = true;
+      settleChannel(acct);
+      saveState();
+      if (isNew) {
+        console.log(`push: device ${device.id} (${device.platform}) on ${created ? 'new ' : ''}account ${accountId}`);
+        // A first notification right away: proof it works, on the device.
+        const topicName = z && knownActiveTopics[z];
+        setImmediate(() => pusher.send(device, {
+          title: 'Notifications are on',
+          body: topicName
+            ? `You’ll hear here when “${topicName}” gets new statements.`
+            : `You’ll hear here when topics you follow get new statements.`,
+          url: z && topicName ? topicUrl(z, topicName) : PUBLIC_URL,
+          tag: 'welcome',
+        }).then(r => { if (!r.ok) console.error(`push: welcome to ${device.id} → ${r.status} ${r.detail || ''}`); }));
+      }
+      res.writeHead(200, { 'Set-Cookie': acctCookie(accountId) });
+      return res.end(JSON.stringify({ ...accountPayload(accountId), deviceId: device.id, created }));
+    }
+
+    // POST /public/push-remove — stop notifications on a device
+    // { accountId, endpoint } (this browser) or { accountId, deviceId }
+    if (req.method === 'POST' && req.url === '/public/push-remove') {
+      const body = await readBody(req);
+      const acct = webAccounts[body.accountId || ''];
+      if (!acct) {
+        res.writeHead(404);
+        return res.end(JSON.stringify({ error: 'Unknown account.' }));
+      }
+      const removed = dropDevice(body.accountId, d =>
+        (body.endpoint && d.endpoint === body.endpoint) || (body.deviceId && d.id === body.deviceId));
+      if (removed) saveState();
+      res.writeHead(200);
+      return res.end(JSON.stringify({ ...accountPayload(body.accountId), removed }));
+    }
+
+    // POST /public/device-code { accountId } — a one-time code that signs an
+    // iPhone's Home Screen app in to this account (that app starts with
+    // storage of its own). Good for one use within 30 minutes.
+    if (req.method === 'POST' && req.url === '/public/device-code') {
+      const body = await readBody(req);
+      if (!webAccounts[body.accountId || '']) {
+        res.writeHead(404);
+        return res.end(JSON.stringify({ error: 'Unknown account.' }));
+      }
+      const mine = Object.values(deviceCodes).filter(c => c.accountId === body.accountId);
+      if (mine.length >= 10) {
+        res.writeHead(429);
+        return res.end(JSON.stringify({ error: 'Too many links today — use one you already have.' }));
+      }
+      const code = crypto.randomBytes(18).toString('base64url');
+      deviceCodes[code] = { accountId: body.accountId, created: Date.now() };
+      saveState();
+      res.writeHead(200);
+      return res.end(JSON.stringify({ code }));
+    }
+
+    // POST /public/device-redeem { code } — the Home Screen app collects the account
+    if (req.method === 'POST' && req.url === '/public/device-redeem') {
+      const body = await readBody(req);
+      const c = typeof body.code === 'string' && deviceCodes[body.code];
+      if (c) delete deviceCodes[body.code];
+      if (!c || Date.now() - c.created > DEVICE_CODE_TTL || !webAccounts[c.accountId]) {
+        if (c) saveState();
+        res.writeHead(410);
+        return res.end(JSON.stringify({ error: 'That link has been used or has expired.' }));
+      }
+      saveState();
+      res.writeHead(200, { 'Set-Cookie': acctCookie(c.accountId) });
+      return res.end(JSON.stringify(accountPayload(c.accountId)));
+    }
+
     // POST /public/subscribe — join a topic's group { accountId, zinvite }
     if (req.method === 'POST' && req.url === '/public/subscribe') {
       const body = await readBody(req);
@@ -2850,12 +2397,8 @@ submit(BOOT);
       acct.subs = acct.subs || [];
       if (!acct.subs.includes(body.zinvite)) acct.subs.push(body.zinvite);
       // WhatsApp members also get the legacy per-phone subscription so the
-      // existing DM flow stays in sync.
-      if (acct.channel === 'whatsapp') {
-        const st = userState[acct.contact] || { phase: 'idle' };
-        st.subscribed = true;
-        userState[acct.contact] = st;
-      }
+      // DM flow stays in sync.
+      if (wa && acct.channel === 'whatsapp') wa.setSubscribed(acct.contact, true);
       saveState();
       res.writeHead(200);
       return res.end(JSON.stringify({ ok: true, subs: acct.subs }));
@@ -2885,9 +2428,7 @@ submit(BOOT);
       if (all) {
         acct.subs = [];
         acct.allTopics = false;
-        if (acct.channel === 'whatsapp' && userState[acct.contact]) {
-          userState[acct.contact].subscribed = false;
-        }
+        if (wa && acct.channel === 'whatsapp') wa.setSubscribed(acct.contact, false);
       } else if (zinvite) {
         acct.subs = (acct.subs || []).filter(z => z !== zinvite);
       }
@@ -2981,28 +2522,23 @@ submit(BOOT);
 
       // Alert members who asked to hear about every new topic
       setImmediate(async () => {
-        // Ask wireclaw for this topic's community subgroup right away
-        syncTopicGroups([{ zinvite, topic }]);
-        if (WA_ANNOUNCE_JID) {
-          pendingNotifications.push({
-            phone: WA_ANNOUNCE_JID,
-            text: `🆕 *New community topic:* ${topic}\n${description ? `\n_${description.slice(0, 150)}_\n` : ''}\nFind its discussion group in this community, or vote anonymously at ${topicUrl(zinvite, topic)}`,
-          });
+        // WhatsApp: ask WireClaw for the topic's subgroup, post to Announcements
+        if (wa) {
+          wa.syncTopicGroups([{ zinvite, topic }]);
+          wa.announce(`🆕 *New community topic:* ${topic}\n${description ? `\n_${description.slice(0, 150)}_\n` : ''}\nFind its discussion group in this community, or vote anonymously at ${topicUrl(zinvite, topic)}`);
         }
         for (const [accountId, acct] of Object.entries(webAccounts)) {
           if (!acct.allTopics || acct.verified === false || accountId === body.accountId) continue;
           const waTo = acctWhatsapp(acct);
           if (waTo) {
-            // Point their DM session at this topic so a bare "vote" reply
-            // starts voting on it right away.
-            const st = userState[waTo] || { phase: 'idle' };
-            if (!st.zinvite || st.phase === 'idle') { st.zinvite = zinvite; st.topic = topic; }
-            userState[waTo] = st;
-            pendingNotifications.push({
-              phone: waTo,
-              text: `🆕 *New community topic:* ${topic}\n${description ? `\n_${description.slice(0, 150)}_\n` : ''}\nReply *vote* to vote on it now, or *topics* to see everything open.`,
-            });
+            wa.alert(waTo, zinvite, topic, `🆕 *New community topic:* ${topic}\n${description ? `\n_${description.slice(0, 150)}_\n` : ''}\nReply *vote* to vote on it now, or *topics* to see everything open.`);
           }
+          await pushToAccount(accountId, acct, {
+            title: `New topic: ${topic}`,
+            body: description ? description.slice(0, 150) : 'A neighbor opened a new topic. Tap to read and vote.',
+            url: topicUrl(zinvite, topic),
+            tag: `t-${zinvite}`,
+          });
           if (acctEmail(acct)) {
             await sendEmail(
               acctEmail(acct),

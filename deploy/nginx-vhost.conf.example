@@ -28,6 +28,25 @@ server {
         expires 30d;
     }
 
+    # Notifications: the service worker (checked for updates on every visit),
+    # the Home Screen app's manifest, and their icons.
+    location = /sw.js {
+        root /var/www/polis;
+        types { } default_type application/javascript;
+        add_header Cache-Control "no-cache";
+    }
+
+    location = /manifest.webmanifest {
+        root /var/www/polis;
+        types { } default_type application/manifest+json;
+        add_header Cache-Control "no-cache";
+    }
+
+    location ~ ^/(icon-192|icon-512|apple-touch-icon|badge-96)\.png$ {
+        root /var/www/polis;
+        expires 7d;
+    }
+
     location = /privacy {
         root /var/www/polis;
         try_files /privacy.html =404;

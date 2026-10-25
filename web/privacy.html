@@ -74,7 +74,7 @@
   <div class="wrap">
     <a class="back" href="/">&larr; Back to the forum</a>
     <h1>Privacy <em>Policy</em></h1>
-    <div class="updated">Last updated August 21, 2026</div>
+    <div class="updated">Last updated October 25, 2026</div>
 
     <div class="card">
       <h2>The short version</h2>
@@ -84,9 +84,9 @@
       services from your browser</strong> — fonts and all assets are served
       from this site itself.</p>
       <p>One important exception, stated plainly: if you opt into updates,
-      delivering them requires <strong>third-party messaging services
-      (WhatsApp and our email provider) that store your data on their own
-      systems</strong>, under their own privacy policies. Details below.</p>
+      delivering them goes through <strong>services we don't run</strong>:
+      your phone's or browser's own notification service (Google, Apple,
+      Mozilla or Microsoft), or our email provider. Details below.</p>
       <div class="promise"><strong>Voting on this website is truly
       private.</strong> It happens entirely between your browser and our
       server — no third party is involved at any step, your identity is a
@@ -105,12 +105,12 @@
       you write are <strong>public</strong> — don't include personal
       information in them.</p>
       <p>Individual votes are <strong>never shown publicly</strong> anywhere —
-      not on the site, not in WhatsApp groups, not in emails. Only aggregate
+      not on the site, not in notifications, not in emails. Only aggregate
       tallies are visible.</p>
       <div class="promise">Voting here on the web without an account is the
-      most private way to participate: your vote never touches WhatsApp,
-      Meta, Mailgun, or any other company — it goes straight to this site's
-      own server and nowhere else.</div>
+      most private way to participate: your vote never touches Google, Apple,
+      Mailgun, or any other company — it goes straight to this site's own
+      server and nowhere else.</div>
     </div>
 
     <div class="card">
@@ -167,14 +167,14 @@
       services we don't control, and <strong>those services will store your
       data</strong>:</p>
       <ul>
-        <li><strong>WhatsApp (Meta Platforms, Inc.).</strong> If you choose
-        WhatsApp updates, your phone number and the content of the messages we
-        exchange with you (topic titles, statement texts, your replies such as
-        votes and commands) are processed and stored by WhatsApp under
-        <a href="https://www.whatsapp.com/legal/privacy-policy">WhatsApp's
-        privacy policy</a>. Joining our WhatsApp community groups also shows
-        your phone number and profile to other group members — that's how
-        WhatsApp works, and it's why voting itself never happens in groups.</li>
+        <li><strong>Notifications on your phone or computer.</strong> If you
+        turn them on, your browser gives us an address at its own notification
+        service — Google (Chrome and Android), Apple (iPhone, iPad and
+        Safari), Mozilla (Firefox) or Microsoft (Edge) — and we send each
+        notification there. The message itself is <strong>encrypted so that
+        only your device can read it</strong>; the notification service sees
+        that this site sent something to your device and when, but not what
+        it says. No name, email or phone number is involved.</li>
         <li><strong>Email (Mailgun, a Sinch company).</strong> If you choose
         email updates, your email address and the content of each message
         (topic titles, statement texts, voting links) are processed and stored
@@ -183,27 +183,36 @@
         privacy policy</a>.</li>
       </ul>
       <div class="promise">We send these services only what delivery requires:
-      your contact detail and the message itself. We never send them your
-      votes as data — voting links in emails are processed on our own
+      the address to deliver to and the message itself. We never send them
+      your votes as data — voting links in emails are processed on our own
       server.</div>
+      <p>We no longer send updates over WhatsApp. If you gave us a WhatsApp
+      number before, it stays on your account only until you remove it or
+      ask us to delete it, and nothing is sent to it. WhatsApp (Meta
+      Platforms, Inc.) keeps its own copies of past messages under
+      <a href="https://www.whatsapp.com/legal/privacy-policy">its privacy
+      policy</a>.</p>
     </div>
 
     <div class="card">
       <h2>If you create an account</h2>
       <p>Accounts exist for one purpose: updates and voting continuity. We
-      store the display name you choose, your contact detail (email or
-      WhatsApp number), which topics you follow, and a voting identity for
-      your account.</p>
+      store the display name you choose (if any), your email (if you give
+      one), the notification address of each device you turn notifications
+      on for, which topics you follow, and a voting identity for your
+      account.</p>
       <p>Because of that voting identity, <strong>an account links your votes
-      to your contact detail on our server</strong> — that's what lets you
-      vote from your phone, the website, or an email link without being asked
-      the same question twice. This link is never public, never shared, and
+      to your account on our server</strong> — that's what lets you vote from
+      your phone, your computer, or an email link without being asked the
+      same question twice. This link is never public, never shared, and
       never sent to the delivery services above. If you'd rather nobody can
       connect your votes to you at all — including us — simply vote without
       an account: anonymous voting is always available.</p>
-      <p>Signing up requires confirming your email or WhatsApp number (we
-      send you a link). Unconfirmed contact details are never messaged and
-      are deleted automatically within an hour.</p>
+      <p>Turning on notifications needs no confirmation: your browser makes
+      the subscription itself, and only that device can receive them. An
+      email address has to be confirmed (we send you a link); unconfirmed
+      addresses are never messaged and are deleted automatically within an
+      hour.</p>
     </div>
 
     <div class="card">
@@ -224,7 +233,9 @@
       to scripts, and is never used to track you across sites. Your browser's
       local storage holds your anonymous voting ID, your account details (if
       any), and keys for topics you created — all on your device, readable
-      only by this site, and gone if you clear your browser data.</p>
+      only by this site, and gone if you clear your browser data. If you turn
+      on notifications, your browser also keeps a small script from this site
+      whose only job is to show them.</p>
     </div>
 
     <div class="card">
@@ -243,21 +254,23 @@
 
     <div class="card">
       <h2>Stopping updates and deleting your data</h2>
-      <p>Reply <em>unsubscribe</em> on WhatsApp or use the one-click link in
-      any email — updates stop immediately, and re-subscribing only happens
-      here on the website, so nobody can silently switch you back on. To have
-      your contact details and account deleted entirely, or to have your name
-      taken off a petition you signed, ask the moderators.
-      Note that WhatsApp and Mailgun retain their own copies of past messages
-      under their own policies; deleting your account here does not delete
-      data they hold.</p>
+      <p>On a device with notifications, open <em>Get updates</em> and tap
+      <em>Turn off</em> (signing out does the same), or block notifications
+      for this site in your browser's settings. For email, use the one-click
+      link in any message. Updates stop immediately, and switching them back
+      on only happens here on the website, so nobody can silently switch you
+      back on. To have your contact details and account deleted entirely, or
+      to have your name taken off a petition you signed, ask the moderators.
+      Note that Mailgun (and WhatsApp, for anyone who used it before) keep
+      their own copies of past messages under their own policies; deleting
+      your account here does not delete data they hold.</p>
     </div>
 
     <div class="card">
       <h2>Questions</h2>
       <p>This forum is run by local volunteers. Questions or deletion
-      requests: ask in the community WhatsApp group, or open a topic about
-      it right here.</p>
+      requests: use <em>Report a bug</em> at the bottom of the forum, or open
+      a topic about it right here.</p>
     </div>
 
     <div class="footer">

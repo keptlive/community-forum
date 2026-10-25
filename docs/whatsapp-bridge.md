@@ -1,8 +1,15 @@
 # WhatsApp Bridge
 
-The hub contains the complete voting state machine for chat
+`server/whatsapp.js` contains the complete voting state machine for chat
 (`/wa/dm`, `/wa/group`) — you just need to connect it to whatever service
 actually sends and receives WhatsApp messages (a Baileys bot, Twilio, etc.).
+
+The bridge is off by default. Set `POLIS_WHATSAPP=on` to load it, with
+`POLIS_WA_ANNOUNCE_JID` (announcements group), `POLIS_WA_COMMUNITY_JID`
+(parent community for per-topic subgroups) and `POLIS_WA_SUPPORT_JID` (bug
+reports) as needed. Off, the `/wa/*` routes don't exist, nothing is queued,
+and WhatsApp numbers already on accounts are kept but not used. Queued
+messages older than a day are dropped rather than delivered late.
 
 Three integration points:
 
