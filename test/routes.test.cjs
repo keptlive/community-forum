@@ -35,7 +35,7 @@ test('creator authorization and unsubscribe persist through real HTTP routes', a
   await new Promise(resolve => reserve.close(resolve));
   const child = spawn(process.execPath, [path.resolve(__dirname, '../server/polis-server.js')], {
     env: { ...process.env, PORT: String(port), STATE_FILE: statePath, POLIS_JWT_KEY: keyPath,
-      POLIS_PETITIONS_DIR: path.join(dir, 'petitions'), IP_SALT_FILE: path.join(dir, 'salt'), POLIS_PUBLIC_URL: 'http://127.0.0.1:' + port,
+      POLIS_WHATSAPP: 'on', POLIS_PETITIONS_DIR: path.join(dir, 'petitions'), IP_SALT_FILE: path.join(dir, 'salt'), POLIS_PUBLIC_URL: 'http://127.0.0.1:' + port,
       POLIS_API_URL: 'http://127.0.0.1:' + upstream.address().port },
     stdio: ['ignore', 'pipe', 'pipe']
   });

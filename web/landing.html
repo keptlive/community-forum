@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Croton Community Forum</title>
   <link rel="icon" href="/favicon.ico" type="image/x-icon">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-title" content="Croton Forum">
   <link href="/fonts/fonts.css" rel="stylesheet">
   <script>
     /* Decide the page's mode BEFORE first paint so the correct layout renders
@@ -479,6 +482,7 @@
       transition: all 0.15s ease;
     }
     .segmented input { display: none; }
+    .segmented label .seg-name { color: inherit; font-weight: inherit; }
     .segmented label:has(input:checked) {
       border-color: var(--green);
       background: var(--green-soft);
@@ -487,6 +491,20 @@
     }
 
     .hp { position: absolute; left: -9999px; top: -9999px; }
+
+    /* Notifications on this device */
+    .pane-note { font-size: 0.85rem; color: var(--muted); line-height: 1.55; margin-top: 0.7rem; }
+    .pane-note b { color: var(--ink); }
+    .push-on { color: var(--green-dark); }
+    .push-help { font-size: 0.84rem; color: #444; line-height: 1.55; margin-top: 0.6rem; }
+    .push-help:empty { display: none; }
+    .push-help ol { margin: 0.45rem 0 0 1.2rem; }
+    .push-help li { margin: 0.25rem 0; }
+    .push-adv { margin-top: 0.95rem; font-size: 0.85rem; }
+    .push-adv > summary { cursor: pointer; color: var(--green); font-weight: 600; font-size: 0.82rem; }
+    .push-adv > summary:hover { text-decoration: underline; text-underline-offset: 3px; }
+    .push-adv .push-help { margin-top: 0.4rem; }
+    .linkish { background: none; border: 0; padding: 0; font: inherit; color: var(--green); font-weight: 600; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
 
     .notice {
       border-radius: 10px;
@@ -787,16 +805,15 @@
     </div>
 
     <div class="footer">
-      Voting is anonymous. Follow a topic to get new statements by email or
-      WhatsApp — each topic has its own update group, and you can leave any
-      time.<br>
+      Voting is anonymous. Follow a topic to hear about new statements as a
+      notification on your phone or by email, and stop any time.<br>
       <a href="/petitions">Petitions</a> &middot; <a href="/privacy">Privacy Policy</a> &middot; <a href="/tos">Terms of Service</a>
 
       <details class="bug-report" id="bug-report">
         <summary>&#x1f41e; Report a bug</summary>
         <form id="bug-form">
           <textarea id="bug-text" maxlength="2000" placeholder="What were you doing, what happened, and what did you expect instead? (e.g. “Tapped Agree on my iPhone — nothing happened.”)"></textarea>
-          <input type="text" id="bug-contact" maxlength="120" placeholder="Email or WhatsApp, if you’d like a reply (optional)">
+          <input type="text" id="bug-contact" maxlength="120" placeholder="Your email, if you’d like a reply (optional)">
           <div class="hp" aria-hidden="true"><input type="text" id="bug-website" tabindex="-1" autocomplete="off"></div>
           <button type="submit" class="btn btn-outline">Send report</button>
         </form>
@@ -810,24 +827,37 @@
     <div class="modal">
       <h3>Get updates</h3>
       <p class="sub">
-        Create a lightweight account — just a name and where to reach you.
-        When topics you follow get new statements, we'll send them your way so
-        you can vote. No password. Your votes are never shown publicly, but an
-        account does privately link them to your contact details so we never
-        ask you twice — for complete anonymity, vote without one.
+        When topics you follow get new statements, we'll let you know so you
+        can vote. No password. Your votes are never shown publicly, but an
+        account does privately link them to this device or your email so we
+        never ask you twice — for complete anonymity, vote without one.
       </p>
       <form id="acct-form" autocomplete="on">
-        <label for="a-name">Name <span>(only used in messages to you)</span></label>
+        <label for="a-name">Name <span>(optional — only used in messages to you)</span></label>
         <input type="text" id="a-name" maxlength="60" placeholder="First name is plenty — e.g. Maria">
 
-        <div class="fieldlabel">Send updates via <span>(fill in either or both)</span></div>
-        <div class="segmented">
-          <label id="seg-email"><input type="radio" name="a-channel" value="email" checked>&#x2709;&#xfe0f; Email<span class="seg-check">&#x2713;</span></label>
-          <label id="seg-whatsapp"><input type="radio" name="a-channel" value="whatsapp">&#x1f4f1; WhatsApp<span class="seg-check">&#x2713;</span></label>
+        <div id="via-row" hidden>
+          <div class="fieldlabel">Send updates via <span>(either or both)</span></div>
+          <div class="segmented">
+            <label id="seg-push"><input type="radio" name="a-channel" value="push">&#x1f514; <span class="seg-name" id="seg-push-name">This phone</span><span class="seg-check">&#x2713;</span></label>
+            <label id="seg-email"><input type="radio" name="a-channel" value="email" checked>&#x2709;&#xfe0f; Email<span class="seg-check">&#x2713;</span></label>
+          </div>
         </div>
 
-        <label for="a-contact" id="a-contact-label">Email address</label>
-        <input type="email" id="a-contact" placeholder="you@gmail.com">
+        <div id="push-pane" hidden>
+          <p class="pane-note" id="push-note"></p>
+          <div class="push-help" id="push-help"></div>
+        </div>
+
+        <div id="email-pane">
+          <label for="a-contact" id="a-contact-label">Email address</label>
+          <input type="email" id="a-contact" placeholder="you@example.com">
+        </div>
+
+        <details class="push-adv" id="push-adv" hidden>
+          <summary id="push-adv-title">Advanced: notifications on this iPhone</summary>
+          <div class="push-help" id="push-adv-body"></div>
+        </details>
 
         <div class="check">
           <input type="checkbox" id="a-alltopics">
@@ -950,16 +980,200 @@
       });
     }
 
+    // ---------- Notifications on this device (Web Push) ----------
+    // The same steps as HookPush (hookpush.live): register the service worker,
+    // ask for permission straight from a tap, subscribe with the hub's key.
+    // Android phones and computers get it in one tap. iPhones only allow it
+    // from the forum's Home Screen app, so there it sits under "Advanced".
+    var LS_PUSH = 'ccf-push'; // { accountId, deviceId } while this device has notifications on
+
+    var platform = (function () {
+      var ua = navigator.userAgent;
+      var ios = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      var ipad = /iPad/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      var installed = navigator.standalone === true || matchMedia('(display-mode: standalone)').matches;
+      var capable = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+      // The browser inside another app (Instagram, Facebook, the Google app…)
+      // has no Add to Home Screen. Real iOS browsers all carry "Safari/".
+      var inApp = ios && !installed && (!/Safari\//.test(ua) || /FBAN|FBAV|Instagram|musical_ly|Bytedance|\bGSA\/|LinkedInApp|Snapchat|Pinterest|MicroMessenger/.test(ua));
+      // Safari's Version/ follows iOS; other browsers carry "OS 16_3".
+      var v = ua.match(/Version\/(\d+)\.(\d+)/) || ua.match(/OS (\d+)_(\d+)/);
+      var iosOld = ios && !!v && (+v[1] < 16 || (+v[1] === 16 && +v[2] < 4));
+      var browser = /CriOS/.test(ua) ? 'chrome-ios' : /FxiOS/.test(ua) ? 'firefox-ios' : /EdgiOS/.test(ua) ? 'edge-ios'
+        : /SamsungBrowser/.test(ua) ? 'samsung' : /Firefox\//.test(ua) ? 'firefox'
+        : /Chrome\/|Chromium/.test(ua) ? 'chrome' : /Safari\//.test(ua) ? 'safari' : 'other';
+      return { ios: ios, ipad: ipad, android: /Android/.test(ua), installed: installed, capable: capable,
+        inApp: inApp, iosOld: iosOld, browser: browser };
+    })();
+    function deviceWord() { return platform.ipad ? 'iPad' : (platform.ios || platform.android) ? 'phone' : 'computer'; }
+
+    // What this browser can do, before asking anything:
+    //   'ready'   notifications work here in a tap
+    //   'denied'  notifications are blocked for this site
+    //   'ios'     iPhone/iPad not on the Home Screen (or too old, or switched off)
+    //   'inapp'   iPhone/iPad inside another app's browser
+    //   'none'    no notifications here (an Android app's browser, an old browser)
+    var pushState = 'none';
+    var pushChecked = null;
+    function checkPush() {
+      if (pushChecked) return pushChecked;
+      if (!platform.capable) {
+        pushState = platform.ios ? (platform.inApp ? 'inapp' : 'ios') : 'none';
+        pushChecked = Promise.resolve(pushState);
+      } else {
+        pushChecked = navigator.serviceWorker.register('/sw.js').then(function () {
+          pushState = Notification.permission === 'denied' ? 'denied' : 'ready';
+          return pushState;
+        }, function () { pushState = 'none'; return pushState; });
+      }
+      return pushChecked;
+    }
+
+    function keyBytes(b64u) {
+      var b64 = b64u.replace(/-/g, '+').replace(/_/g, '/');
+      while (b64.length % 4) b64 += '=';
+      return Uint8Array.from(atob(b64), function (c) { return c.charCodeAt(0); });
+    }
+    function sameKey(buf, bytes) {
+      if (!buf) return true;
+      var a = new Uint8Array(buf);
+      if (a.length !== bytes.length) return false;
+      for (var i = 0; i < a.length; i++) if (a[i] !== bytes[i]) return false;
+      return true;
+    }
+    var pushKey = null;
+
+    // Asks for permission if needed and returns this browser's subscription
+    // as JSON, or { denied: true } / { dismissed: true }. Call it straight
+    // from a tap: Safari only asks inside one.
+    function pushSubscription() {
+      return new Promise(function (resolve) {
+        var p = Notification.requestPermission(resolve);
+        if (p && p.then) p.then(resolve);
+      }).then(function (perm) {
+        if (perm === 'denied') return { denied: true };
+        if (perm !== 'granted') return { dismissed: true };
+        var reg;
+        return navigator.serviceWorker.register('/sw.js')
+          .then(function () { return navigator.serviceWorker.ready; })
+          .then(function (r) { reg = r; return pushKey || api('/public/push-key').then(function (d) { return (pushKey = d.publicKey); }); })
+          .then(function (key) {
+            var bytes = keyBytes(key);
+            return reg.pushManager.getSubscription().then(function (sub) {
+              // Made with another key (the hub's key changed): start over.
+              if (sub && !sameKey(sub.options && sub.options.applicationServerKey, bytes)) {
+                return sub.unsubscribe().catch(function () {}).then(function () { return null; });
+              }
+              return sub;
+            }).then(function (sub) {
+              return sub || reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: bytes });
+            });
+          })
+          .then(function (sub) { return { subscription: sub.toJSON() }; });
+      });
+    }
+
+    function currentEndpoint() {
+      if (!platform.capable) return Promise.resolve(null);
+      return navigator.serviceWorker.getRegistration('/').then(function (reg) {
+        return reg ? reg.pushManager.getSubscription() : null;
+      }).then(function (sub) { return sub ? sub.endpoint : null; }, function () { return null; });
+    }
+
+    // Notifications on for this device: the hub adds the subscription to this
+    // account, or to a new one (no email or number needed).
+    function turnOnPush(extra) {
+      return pushSubscription().then(function (got) {
+        if (!got.subscription) return got;
+        var a = account();
+        var body = { subscription: got.subscription, accountId: a && a.accountId, xid: myXid() };
+        for (var k in extra) body[k] = extra[k];
+        return api('/public/push', body).then(function (d) {
+          lsSet(LS_PUSH, { accountId: d.accountId, deviceId: d.deviceId });
+          return { account: d };
+        });
+      });
+    }
+
+    function turnOffPush() {
+      var a = account();
+      return currentEndpoint().then(function (endpoint) {
+        var told = (a && endpoint)
+          ? api('/public/push-remove', { accountId: a.accountId, endpoint: endpoint }).then(function (d) {
+              var cur = account();
+              if (cur && cur.accountId === d.accountId) { cur.devices = d.devices; lsSet(LS_ACCOUNT, cur); }
+            }, function () {})
+          : Promise.resolve();
+        return told.then(function () {
+          return navigator.serviceWorker.getRegistration('/').then(function (reg) {
+            return reg && reg.pushManager.getSubscription();
+          }).then(function (sub) { if (sub) return sub.unsubscribe(); }).catch(function () {});
+        });
+      }).then(function () { lsSet(LS_PUSH, null); });
+    }
+
+    function pushIsOn() {
+      var f = lsGet(LS_PUSH, null), a = account();
+      return !!(f && a && f.accountId === a.accountId && pushState === 'ready' && Notification.permission === 'granted');
+    }
+
+    function steps(list) {
+      return '<ol>' + list.map(function (x) { return '<li>' + x + '</li>'; }).join('') + '</ol>';
+    }
+    function copyLinkButton() {
+      return '<p style="margin-top:0.4rem"><button type="button" class="linkish" data-copy-link>Copy this page&rsquo;s link</button></p>';
+    }
+
+    // How to allow notifications again after "Block", for this browser.
+    function blockedHelp() {
+      var again = 'Then tap <b>Turn on notifications</b> again.';
+      if (platform.ios) return steps(['Settings &rarr; Notifications &rarr; <b>Croton Forum</b> &rarr; switch <b>Allow Notifications</b> on.', 'Close Croton Forum and open it again. ' + again]);
+      if (platform.android && platform.browser === 'samsung') return steps(['Menu (three lines) &rarr; <b>Settings</b> &rarr; <b>Sites and downloads</b> &rarr; <b>Notifications</b>.', 'Find ' + location.host + ' and switch it on.', again]);
+      if (platform.android && platform.browser === 'firefox') return steps(['Tap the lock at the left of the address bar.', 'Set <b>Notification</b> to <b>Allowed</b>.', again]);
+      if (platform.android) return steps(['Tap the icon at the left of the address bar.', 'Tap <b>Permissions</b> &rarr; <b>Notifications</b> and choose <b>Allow</b>. No such row? Tap <b>Reset permissions</b> and reload.', again]);
+      if (platform.browser === 'firefox') return steps(['Click the icon at the left of the address bar.', 'Next to <b>Send notifications</b>, click the &times; beside &ldquo;Blocked&rdquo;.', 'Reload this page. ' + again]);
+      if (platform.browser === 'safari') return steps(['Safari &rarr; <b>Settings&hellip;</b> &rarr; <b>Websites</b> &rarr; <b>Notifications</b>.', 'Set ' + location.host + ' to <b>Allow</b>.', 'Reload this page. ' + again]);
+      return steps(['Click the icon at the left of the address bar.', 'Switch <b>Notifications</b> on (or open <b>Site settings</b> and choose <b>Allow</b>).', 'Reload this page. ' + again]);
+    }
+
+    // iPhone and iPad: notifications only come to the forum's Home Screen
+    // app, so the steps depend on the iOS version, the browser and whether
+    // the app is already there (after HookPush's ios.js).
+    function iosHelp() {
+      var d = platform.ipad ? 'iPad' : 'iPhone';
+      if (platform.iosOld) {
+        return '<p>This ' + d + ' needs iOS 16.4 or newer for notifications: Settings &rarr; General &rarr; <b>Software Update</b>. Email works on any phone.</p>';
+      }
+      if (platform.inApp) {
+        return '<p>The browser inside this app can&rsquo;t add pages to the Home Screen, which ' + d + ' needs for notifications. ' +
+          'Tap <b>&hellip;</b> (or the compass) and choose <b>Open in Safari</b>, then open <b>Get updates</b> again.</p>' + copyLinkButton();
+      }
+      if (platform.installed) {
+        return steps(['Settings &rarr; Notifications &rarr; <b>Croton Forum</b> &rarr; switch <b>Allow Notifications</b> on.', 'Close Croton Forum and open it again.']);
+      }
+      var share = platform.browser === 'chrome-ios' ? 'Tap <b>Share</b> in the address bar at the top (or <b>&hellip;</b> &rarr; <b>Share</b>).'
+        : platform.browser === 'firefox-ios' ? 'Tap the menu (three lines) &rarr; <b>Share</b>.'
+        : platform.browser === 'edge-ios' ? 'Tap <b>&hellip;</b> at the bottom &rarr; <b>Share</b>.'
+        : platform.ipad ? 'Tap <b>Share</b> at the top right (a square with an arrow pointing up).'
+        : 'Tap <b>Share</b> at the bottom of the screen (a square with an arrow pointing up). Only the address bar showing? Tap <b>&hellip;</b> first.';
+      return '<p>On ' + d + ', notifications come to the forum&rsquo;s Home Screen app:</p>' + steps([share,
+        'Scroll down and tap <b>Add to Home Screen</b>. Not in the list? Tap <b>Edit Actions</b> at the bottom.',
+        'Keep <b>Open as Web App</b> on and tap <b>Add</b>.',
+        'Open <b>Croton Forum</b> from your Home Screen, tap <b>Get updates</b> &rarr; <b>Turn on notifications</b>, and choose <b>Allow</b>.']) +
+        '<p style="margin-top:0.4rem">Needs iOS 16.4 or newer.' + (account() ? ' You&rsquo;ll be signed in there too.' : '') +
+        ' Email above works on any phone.</p>';
+    }
+
     // ---------- Account modal ----------
     var overlay = document.getElementById('acct-overlay');
 
     function refreshMeButton() {
       var a = account();
-      var who = a ? (a.name || a.email || a.whatsapp || a.contact || '?') : null;
+      var who = a ? (a.name || a.email || a.whatsapp || a.contact || '') : null;
       document.getElementById('me-label').textContent =
-        a ? who : 'Sign up for updates';
+        a ? (who || 'Updates on') : 'Sign up for updates';
       document.getElementById('me-dot').textContent =
-        a ? who.charAt(0).toUpperCase() : '+';
+        a ? (who ? who.charAt(0).toUpperCase() : '\u2713') : '+';
       document.getElementById('acct-signout').style.display = a ? '' : 'none';
       loadMyStats();
     }
@@ -1178,29 +1392,20 @@
       }).catch(function (err) { toast(err.message); });
     }
 
-    document.getElementById('me-btn').addEventListener('click', function () {
+    function openAccountModal() {
       var a = account();
       var pendingClaim = !a && lsGet(LS_CLAIM, null);
       if (pendingClaim) { showVerifyUI(pendingClaim.channels || pendingClaim.channel); startClaimPoll(); }
-      if (a) {
-        document.getElementById('a-name').value = a.name || '';
-        contactVals.email = a.email || (a.channel === 'email' ? a.contact : '') || '';
-        contactVals.whatsapp = a.whatsapp || (a.channel === 'whatsapp' ? a.contact : '') || '';
-        var primary = 'email';
-        if (contactVals.whatsapp && (!contactVals.email || a.channel === 'whatsapp')) primary = 'whatsapp';
-        var radios = document.getElementsByName('a-channel');
-        for (var i = 0; i < radios.length; i++) radios[i].checked = radios[i].value === primary;
-        shownChannel = primary;
-        syncChannelUI();
-        document.getElementById('a-alltopics').checked = !!a.allTopics;
-      } else {
-        contactVals = { email: '', whatsapp: '' };
-        shownChannel = document.querySelector('input[name="a-channel"]:checked').value;
-        document.getElementById('a-contact').value = '';
-        refreshSegChecks();
-      }
+      document.getElementById('acct-notice').className = 'notice';
+      document.getElementById('a-name').value = a ? a.name || '' : '';
+      contactVals.email = a ? a.email || (a.channel === 'email' ? a.contact : '') || '' : '';
+      document.getElementById('a-alltopics').checked = !!(a && a.allTopics);
+      setupChannels();
       overlay.classList.add('open');
-    });
+      // First open before the browser's push support is known: redo it then.
+      checkPush().then(function () { if (overlay.classList.contains('open')) setupChannels(); });
+    }
+    document.getElementById('me-btn').addEventListener('click', openAccountModal);
     document.getElementById('acct-cancel').addEventListener('click', function () {
       overlay.classList.remove('open');
     });
@@ -1208,56 +1413,113 @@
       if (e.target === overlay) overlay.classList.remove('open');
     });
     document.getElementById('acct-signout').addEventListener('click', function () {
-      localStorage.removeItem(LS_ACCOUNT);
-      refreshMeButton();
-      overlay.classList.remove('open');
-      loadTopics();
-      toast('Signed out on this device.');
+      // Signing out of this device also stops its notifications.
+      var done = function () {
+        localStorage.removeItem(LS_ACCOUNT);
+        refreshMeButton();
+        overlay.classList.remove('open');
+        loadTopics();
+        toast('Signed out on this device.');
+      };
+      if (lsGet(LS_PUSH, null)) turnOffPush().then(done, done); else done();
     });
 
-
-    // Compact channel UI: the segmented control switches which contact the
-    // single field is editing; both values persist behind it, and a ✓ lights
-    // up on any channel that's filled in. Filling both = updates on both.
-    var contactVals = { email: '', whatsapp: '' };
+    // How updates arrive: notifications on this device up front wherever they
+    // take one tap (Android, computers, the iPhone Home Screen app); email up
+    // front elsewhere, with the iPhone Home Screen route under "Advanced". A ✓
+    // lights up on each channel that is on.
+    var contactVals = { email: '' };
     var shownChannel = 'email';
+
+    function setupChannels() {
+      var a = account();
+      var oneTap = pushState === 'ready' || pushState === 'denied';
+      document.getElementById('via-row').hidden = !oneTap;
+      document.getElementById('seg-push-name').textContent = 'This ' + deviceWord();
+      var adv = '';
+      if (pushState === 'ios' || pushState === 'inapp') adv = iosHelp();
+      else if (pushState === 'none' && platform.android) {
+        adv = '<p>To get notifications on this phone, open this page in Chrome: tap <b>&#8942;</b> and choose <b>Open in Chrome</b> (or <b>Open in browser</b>).</p>' + copyLinkButton();
+      }
+      var details = document.getElementById('push-adv');
+      details.hidden = !adv;
+      details.open = false;
+      document.getElementById('push-adv-title').textContent = 'Advanced: notifications on this ' + (platform.ios ? (platform.ipad ? 'iPad' : 'iPhone') : 'phone');
+      document.getElementById('push-adv-body').innerHTML = adv;
+      var pick = oneTap && (pushIsOn() || !a || !a.email) ? 'push' : 'email';
+      Array.prototype.forEach.call(document.getElementsByName('a-channel'), function (r) { r.checked = r.value === pick; });
+      syncChannelUI();
+    }
 
     function refreshSegChecks() {
       document.getElementById('seg-email').classList.toggle('has-val', !!contactVals.email.trim());
-      document.getElementById('seg-whatsapp').classList.toggle('has-val', !!contactVals.whatsapp.trim());
+      document.getElementById('seg-push').classList.toggle('has-val', pushIsOn());
     }
 
-    // Render-only: reflects the checked channel + banked values. Banking the
-    // in-progress edit happens ONLY on a real channel switch — never here, or
-    // programmatic prefill gets clobbered by stale field contents.
+    // Render-only: reflects the checked channel + the banked email. Banking
+    // the in-progress edit happens ONLY on a real channel switch — never
+    // here, or programmatic prefill gets clobbered by stale field contents.
     function syncChannelUI() {
-      var ch = document.querySelector('input[name="a-channel"]:checked').value;
-      var label = document.getElementById('a-contact-label');
-      var input = document.getElementById('a-contact');
-      shownChannel = ch;
-      if (ch === 'whatsapp') {
-        label.textContent = 'WhatsApp number';
-        input.type = 'tel';
-        input.placeholder = '(914) 555-0123';
+      var push = !document.getElementById('via-row').hidden &&
+        document.querySelector('input[name="a-channel"]:checked').value === 'push';
+      shownChannel = push ? 'push' : 'email';
+      document.getElementById('push-pane').hidden = !push;
+      document.getElementById('email-pane').hidden = push;
+      document.getElementById('a-contact').value = contactVals.email;
+      var on = pushIsOn();
+      var note = document.getElementById('push-note');
+      var help = document.getElementById('push-help');
+      if (pushState === 'denied') {
+        note.innerHTML = 'Notifications are blocked for this site in this browser. To allow them:';
+        help.innerHTML = blockedHelp();
+      } else if (on) {
+        note.innerHTML = '<span class="push-on">&#x2713; <b>Notifications are on for this ' + deviceWord() + '.</b></span> ' +
+          '<button type="button" class="linkish" id="push-off">Turn off</button>';
+        help.innerHTML = '';
       } else {
-        label.textContent = 'Email address';
-        input.type = 'email';
-        input.placeholder = 'you@example.com';
+        note.innerHTML = 'A notification on this ' + deviceWord() + ' when there&rsquo;s something new to vote on. No email or phone number needed.';
+        help.innerHTML = '';
       }
-      input.value = contactVals[ch];
+      document.getElementById('acct-save').textContent = push && !on && pushState === 'ready' ? 'Turn on notifications' : 'Save';
       refreshSegChecks();
     }
     Array.prototype.forEach.call(document.getElementsByName('a-channel'), function (r) {
       r.addEventListener('change', function () {
-        // Bank what was being edited under the channel it belonged to,
-        // THEN switch the view.
-        contactVals[shownChannel] = document.getElementById('a-contact').value;
+        // Bank the email being edited, THEN switch the view.
+        if (shownChannel === 'email') contactVals.email = document.getElementById('a-contact').value;
         syncChannelUI();
       });
     });
     document.getElementById('a-contact').addEventListener('input', function () {
-      contactVals[shownChannel] = this.value;
+      contactVals.email = this.value;
       refreshSegChecks();
+    });
+
+    document.getElementById('acct-form').addEventListener('click', function (e) {
+      if (e.target.id === 'push-off') {
+        turnOffPush().then(function () {
+          syncChannelUI();
+          screenNote('&#x1f515; Notifications are off on this ' + deviceWord() + '.', '', 3500);
+        });
+      } else if (e.target.hasAttribute('data-copy-link')) {
+        var url = location.href.split('#')[0];
+        (navigator.clipboard ? navigator.clipboard.writeText(url) : Promise.reject())
+          .then(function () { toast('Link copied.'); }, function () { window.prompt('Copy this link:', url); });
+      }
+    });
+
+    // iPhone: the Home Screen app starts with storage of its own. Put a
+    // one-time code in this page's address before it is added, so the app
+    // opens signed in to this account.
+    document.getElementById('push-adv').addEventListener('toggle', function () {
+      var a = account();
+      if (!this.open || !a || pushState !== 'ios' || platform.installed || platform.iosOld) return;
+      if (new URLSearchParams(location.search).get('device')) return;
+      api('/public/device-code', { accountId: a.accountId }).then(function (d) {
+        var u = new URL(location.href);
+        u.searchParams.set('device', d.code);
+        history.replaceState(history.state, '', u.pathname + u.search + u.hash);
+      }).catch(function () {});
     });
 
     // Reconcile this browser's voting identity with the account's.
@@ -1288,11 +1550,11 @@
       }
     }
 
-    // ---------- Signup verification (clickthrough link, email or WhatsApp) ----
+    // ---------- Signup verification (email clickthrough link) ----
     var LS_CLAIM = 'ccf-claim';
     var claimTimer = null;
 
-    function adoptAccount(d, noteHtml) {
+    function storeAccount(d) {
       lsSet(LS_ACCOUNT, {
         accountId: d.accountId,
         name: d.name,
@@ -1301,9 +1563,20 @@
         email: d.email || null,
         whatsapp: d.whatsapp || null,
         allTopics: d.allTopics,
-        subs: d.subs || []
+        subs: d.subs || [],
+        devices: d.devices || []
       });
+      // This device's notifications moved with it (accounts merged on an
+      // email confirmation): keep them marked as on.
+      var f = lsGet(LS_PUSH, null);
+      if (f && f.accountId !== d.accountId && (d.devices || []).some(function (x) { return x.id === f.deviceId; })) {
+        lsSet(LS_PUSH, { accountId: d.accountId, deviceId: f.deviceId });
+      }
       syncXid(d);
+    }
+
+    function adoptAccount(d, noteHtml) {
+      storeAccount(d);
       lsSet(LS_CLAIM, null);
       stopClaimPoll();
       hideVerifyUI();
@@ -1318,10 +1591,8 @@
       var both = list.length > 1;
       document.getElementById('acct-verify').style.display = '';
       document.getElementById('verify-msg').innerHTML = both
-        ? '&#x2709;&#xfe0f;&#x1f4f1; Almost done &mdash; we sent confirmation links to your email <i>and</i> your WhatsApp. Tap each to activate that channel; this window finishes after the first one.'
-        : (list[0] === 'whatsapp'
-          ? '&#x1f4f1; Almost done &mdash; we sent a confirmation link to your WhatsApp. Tap it, and this window will finish on its own.'
-          : '&#x1f4e7; Almost done &mdash; we emailed you a confirmation link. Click it, and this window will finish on its own.');
+        ? '&#x1f4e7; Almost done &mdash; we sent confirmation links. Tap each to activate that channel; this window finishes after the first one.'
+        : '&#x1f4e7; Almost done &mdash; we emailed you a confirmation link. Click it, and this window will finish on its own.';
     }
     function hideVerifyUI() {
       document.getElementById('acct-verify').style.display = 'none';
@@ -1361,51 +1632,84 @@
       }, 4000);
     }
 
-    document.getElementById('acct-form').addEventListener('submit', function (e) {
-      e.preventDefault();
+    function formError(msg) {
       var notice = document.getElementById('acct-notice');
-      notice.className = 'notice';
-      notice.textContent = '';
-      contactVals[shownChannel] = document.getElementById('a-contact').value; // bank current edit
+      notice.className = 'notice error';
+      notice.textContent = msg;
+    }
+
+    // Name, email and "every new topic" through the account endpoint. A new
+    // or changed email waits for its confirmation link; everything else
+    // saves at once.
+    function saveAccount(savedNote) {
       var payload = {
         previousAccountId: (account() || {}).accountId,
         name: document.getElementById('a-name').value,
         email: contactVals.email.trim(),
-        whatsapp: contactVals.whatsapp.trim(),
         allTopics: document.getElementById('a-alltopics').checked,
         xid: myXid(), // ties this browser's votes to the account identity
         website: document.getElementById('a-website').value
       };
-      if (!payload.email && !payload.whatsapp) {
-        notice.className = 'notice error';
-        notice.textContent = 'Enter an email address or WhatsApp number.';
-        return;
-      }
-      api('/public/account', payload).then(function (d) {
+      return api('/public/account', payload).then(function (d) {
         if (d.pending) {
           lsSet(LS_CLAIM, { claimId: d.claimId, channels: d.channels || [d.channel], ts: Date.now() });
           overlay.classList.remove('open');
-          var chs = d.channels || [d.channel];
-          var where = chs.length > 1 ? 'your email <i>and</i> WhatsApp'
-            : (chs[0] === 'whatsapp' ? 'your WhatsApp' : 'your inbox');
           screenNote(d.updated
-            ? '&#x2705; <b>Saved.</b> One more step for your new contact — tap the link we sent to ' + where + '.'
-            : '&#x2709;&#xfe0f; <b>One more step</b> — we sent a confirmation link to ' + where + '. Tap it to finish subscribing.', '', 7000);
+            ? (savedNote || '&#x2705; <b>Saved.</b>') + ' One more step for your email — tap the link we sent to your inbox.'
+            : '&#x2709;&#xfe0f; <b>One more step</b> — we sent a confirmation link to your inbox. Tap it to finish subscribing.', '', 7000);
           startClaimPoll();
           return;
         }
-        adoptAccount(d, '&#x2705; <b>Saved.</b>'); // change-aware save: nothing new to confirm
-      }).catch(function (err) {
-        notice.className = 'notice error';
-        notice.textContent = err.message;
-      });
+        adoptAccount(d, savedNote || '&#x2705; <b>Saved.</b>'); // change-aware save: nothing new to confirm
+      }).catch(function (err) { formError(err.message); });
+    }
+
+    document.getElementById('acct-form').addEventListener('submit', function (e) {
+      e.preventDefault();
+      document.getElementById('acct-notice').className = 'notice';
+      if (shownChannel === 'email') contactVals.email = document.getElementById('a-contact').value; // bank current edit
+      var a = account();
+      var name = document.getElementById('a-name').value;
+      var allTopics = document.getElementById('a-alltopics').checked;
+      var email = contactVals.email.trim();
+
+      if (shownChannel === 'push' && pushState === 'ready' && !pushIsOn()) {
+        // Straight from the tap: Safari only asks for permission inside one.
+        var btn = document.getElementById('acct-save');
+        btn.disabled = true;
+        turnOnPush({ name: name, allTopics: allTopics, website: document.getElementById('a-website').value }).then(function (r) {
+          btn.disabled = false;
+          if (r.denied) { pushState = 'denied'; syncChannelUI(); return; }
+          if (r.dismissed) return formError('Nothing changed — tap Turn on notifications again and choose Allow.');
+          var on = '&#x1f514; <b>Notifications are on.</b> The first one is on its way to this ' + deviceWord() + '.';
+          storeAccount(r.account);
+          // Signed in already, or an email typed in too: save those as well.
+          var d = r.account;
+          if ((email && email !== (d.email || '')) || (!r.account.created && (name.trim() !== (d.name || '') || allTopics !== !!d.allTopics))) {
+            return saveAccount(on);
+          }
+          adoptAccount(d, on);
+        }).catch(function (err) {
+          btn.disabled = false;
+          formError(err.message || 'Couldn’t turn on notifications here. Try email instead.');
+        });
+        return;
+      }
+
+      var reachable = email || pushIsOn() || (a && (a.devices || []).length);
+      if (!reachable) {
+        return formError(document.getElementById('via-row').hidden
+          ? 'Enter an email address.'
+          : 'Turn on notifications for this ' + deviceWord() + ', or enter an email address.');
+      }
+      saveAccount();
     });
 
     // Open the modal, resolve when an account exists (or reject on cancel)
     function requireAccount() {
       return new Promise(function (resolve, reject) {
         if (account()) return resolve(account());
-        overlay.classList.add('open');
+        openAccountModal();
         var iv = setInterval(function () {
           if (account()) { clearInterval(iv); resolve(account()); }
           else if (!overlay.classList.contains('open')) { clearInterval(iv); reject(new Error('cancelled')); }
@@ -2238,6 +2542,34 @@
     refreshMeButton();
     loadTopics();
 
+    // Opened from an iPhone Home Screen with a one-time code in the address
+    // (see the "Advanced" iPhone steps): sign in with it, then offer the
+    // one-tap switch that works here.
+    (function () {
+      var u = new URL(location.href);
+      var code = u.searchParams.get('device');
+      if (!code) return;
+      u.searchParams.delete('device');
+      history.replaceState(history.state, '', u.pathname + u.search + u.hash);
+      if (account()) return;
+      api('/public/device-redeem', { code: code }).then(function (d) {
+        adoptAccount(d, '&#x2705; <b>Signed in.</b>');
+        checkPush().then(function () { if (pushState === 'ready' && !pushIsOn()) openAccountModal(); });
+      }).catch(function () {});
+    })();
+
+    // Notifications already on here: hand the hub this browser's current
+    // subscription again, quietly, so changed keys or a device it dropped
+    // heal on their own. Permission withdrawn in the browser: forget it.
+    checkPush().then(function () {
+      var f = lsGet(LS_PUSH, null), a = account();
+      if (!f || !a || f.accountId !== a.accountId) return;
+      if (pushState !== 'ready' || Notification.permission !== 'granted') { lsSet(LS_PUSH, null); return; }
+      pushSubscription().then(function (got) {
+        if (got.subscription) return api('/public/push', { subscription: got.subscription, accountId: a.accountId });
+      }).catch(function () {});
+    });
+
     // Resume an in-flight signup verification across reloads
     if (!account() && lsGet(LS_CLAIM, null)) startClaimPoll();
 
@@ -2250,7 +2582,7 @@
     }
 
     // Re-sync follow state from the server — localStorage drifts when follows
-    // change elsewhere (another device, email unsubscribe link, WhatsApp).
+    // change elsewhere (another device, an email unsubscribe link).
     (function () {
       var a = account();
       if (!a || !a.accountId) return;
@@ -2263,13 +2595,15 @@
           if (!cur || cur.accountId !== syncedId) return;
           syncXid(d);
           var changed = JSON.stringify(d.subs || []) !== JSON.stringify(cur.subs || [])
-            || d.allTopics !== cur.allTopics || (d.name || '') !== (cur.name || '');
+            || d.allTopics !== cur.allTopics || (d.name || '') !== (cur.name || '')
+            || (d.devices || []).length !== (cur.devices || []).length;
           if (!changed) return;
           cur.name = d.name || cur.name;
           cur.allTopics = d.allTopics;
           cur.subs = d.subs || [];
           cur.email = d.email || cur.email || null;
           cur.whatsapp = d.whatsapp || cur.whatsapp || null;
+          cur.devices = d.devices || [];
           lsSet(LS_ACCOUNT, cur);
           refreshMeButton();
           loadTopics();

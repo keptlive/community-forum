@@ -22,6 +22,13 @@ Environment=MAILGUN_API_KEY=changeme
 Environment=MAILGUN_DOMAIN=mg.example.org
 Environment="EMAIL_FROM=My Community Forum <forum@mg.example.org>"
 
+# --- Push notifications (on by default; key pair made on first start) ---
+# Environment=POLIS_VAPID_FILE=/opt/community-forum/server/vapid.json
+# Environment=POLIS_VAPID_SUBJECT=https://forum.example.org
+
+# --- WhatsApp bridge (off unless set; see docs/whatsapp-bridge.md) ---
+# Environment=POLIS_WHATSAPP=on
+
 # --- Optional overrides (defaults shown) ---
 # Environment=PORT=9876
 # Environment=POLIS_JWT_KEY=/opt/community-forum/server/jwt-private.pem
