@@ -80,3 +80,7 @@ close-own-topic via a creator key handed out at creation.
   them.
 - Topic creation is rate-limited (3/IP/hour, 20/day globally), length-capped,
   and honeypot-trapped. Emails carry per-topic and global unsubscribe links.
+
+## License
+
+[MIT](LICENSE)
