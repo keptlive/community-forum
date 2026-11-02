@@ -1,12 +1,12 @@
 services:
-  # Public serving moved to host nginx (/etc/nginx/sites-enabled/polis.croton.news)
+  # Public serving moved to host nginx (/etc/nginx/sites-enabled/croton.forum)
   # after host nginx took over ports 80/443 in June 2026; the container proxy can
   # no longer bind them. Keep it out of `up` runs.
   nginx-proxy:
     profiles: ["disabled"]
     volumes:
-      - /etc/letsencrypt/live/polis.croton.news/fullchain.pem:/etc/nginx/certs/snakeoil.cert.pem:ro
-      - /etc/letsencrypt/live/polis.croton.news/privkey.pem:/etc/nginx/certs/snakeoil.key.pem:ro
+      - /etc/letsencrypt/live/croton.forum/fullchain.pem:/etc/nginx/certs/snakeoil.cert.pem:ro
+      - /etc/letsencrypt/live/croton.forum/privkey.pem:/etc/nginx/certs/snakeoil.key.pem:ro
       - ./landing.html:/etc/nginx/landing/landing.html:ro
       - ./nginx-landing.conf.template:/etc/nginx/conf.d/default.conf.template:ro
 
